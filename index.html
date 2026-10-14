@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>作业小管家 · 作业监督与记录</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="theme-color" content="#6366f1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="作业小管家">
+<style>
+:root{
+  --primary:#6366f1; --primary-d:#4f46e5;
+  --ok:#22c55e; --ok-d:#16a34a;
+  --warn:#f59e0b; --danger:#ef4444;
+  --bg1:#fff7ed; --bg2:#e0f2fe; --bg3:#ede9fe;
+  --card:rgba(255,255,255,.94);
+  --text:#1f2937; --muted:#6b7280; --line:#e5e7eb;
+  --r:18px; --sh:0 8px 24px rgba(31,41,55,.10);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  font-family:"PingFang SC","Microsoft YaHei",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color:var(--text);
+  background:linear-gradient(135deg,var(--bg1) 0%,var(--bg3) 45%,var(--bg2) 100%);
+  background-attachment:fixed;min-height:100vh;
+  padding:calc(14px + env(safe-area-inset-top)) 14px calc(60px + env(safe-area-inset-bottom));
+}
+h1,h2,h3{margin:0}
+button{font-family:inherit;font-size:14px;cursor:pointer;border:none;border-radius:12px;padding:10px 16px;transition:.18s}
+button:active{transform:scale(.97)}
+.hidden{display:none !important}
+
+/* ---------- 头部 ---------- */
+.topbar{
+  max-width:820px;margin:0 auto 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  background:var(--card);border-radius:var(--r);padding:14px 16px;box-shadow:var(--sh);
+}
+.logo{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,var(--primary),#8b5cf6);
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;font-weight:700;flex:none}
+.titles{flex:1;min-width:140px}
+.titles h1{font-size:18px;line-height:1.2}
+.titles p{margin:3px 0 0;font-size:12px;color:var(--muted)}
+.kid{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.kid input{width:96px;border:1px solid var(--line);border-radius:10px;padding:6px 8px;font-size:13px;text-align:center}
+
+/* ---------- 卡片 ---------- */
+.card{max-width:820px;margin:0 auto 14px;background:var(--card);border-radius:var(--r);padding:16px;box-shadow:var(--sh)}
+.card h2{font-size:15px;display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.card h2 .tag{font-size:11px;font-weight:400;color:var(--muted);background:#f3f4f6;padding:3px 8px;border-radius:999px}
+
+/* ---------- 日期条 ---------- */
+.datebar{display:flex;align-items:center;gap:8px;justify-content:space-between;margin-bottom:12px}
+.datebar .nav{display:flex;align-items:center;gap:6px}
+.datebar button{padding:8px 12px;background:#f3f4f6;color:var(--text)}
+.datebar input[type=date]{border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:14px;font-family:inherit}
+.today-chip{font-size:12px;color:var(--primary);background:#eef2ff;padding:5px 10px;border-radius:999px}
+
+/* ---------- 统计 ---------- */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.stat{background:linear-gradient(135deg,#f8fafc,#eef2ff);border-radius:14px;padding:10px;text-align:center}
+.stat b{display:block;font-size:22px;line-height:1.1}
+.stat span{font-size:11px;color:var(--muted)}
+
+/* ---------- 按钮 ---------- */
+.btn{background:var(--primary);color:#fff;font-weight:600}
+.btn:hover{background:var(--primary-d)}
+.btn.ghost{background:#f3f4f6;color:var(--text)}
+.btn.ghost:hover{background:#e5e7eb}
+.btn.ok{background:var(--ok)}
+.btn.ok:hover{background:var(--ok-d)}
+.btn.danger{background:#fee2e2;color:#b91c1c}
+.btn-sm{background:#f3f4f6;color:var(--text)}
+.btn-sm:hover{background:#e5e7eb}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ---------- 上传区 ---------- */
+.drop{border:2px dashed #c7d2fe;border-radius:16px;padding:20px;text-align:center;background:#fafaff;transition:.2s}
+.drop.over{border-color:var(--primary);background:#eef2ff}
+.drop p{margin:0 0 12px;font-size:13px;color:var(--muted)}
+.progress{height:8px;border-radius:999px;background:#e5e7eb;overflow:hidden;margin-top:10px}
+.progress > i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--primary),#8b5cf6);transition:width .25s}
+.status{font-size:12px;color:var(--muted);margin-top:8px;min-height:16px;word-break:break-all}
+textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:10px;font-size:14px;font-family:inherit;resize:vertical;line-height:1.6}
+
+/* ---------- 候选任务 ---------- */
+.cand{display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid #f3f4f6}
+.cand:last-child{border-bottom:none}
+.cand input[type=text]{flex:1;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:14px;font-family:inherit;min-width:0}
+.cand .pick{width:22px;height:22px;flex:none;accent-color:var(--primary)}
+.cand-title{font-size:12px;color:var(--muted);font-weight:700;padding:10px 0 4px}
+.note-cand input[type=text]{background:#fffbeb;border-color:#fde68a}
+.cand .del{background:transparent;color:#9ca3af;font-size:18px;padding:0 4px;flex:none}
+
+/* ---------- 任务列表 ---------- */
+.task{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;padding:12px;border:1px solid var(--line);border-radius:14px;margin-bottom:10px;background:#fff;transition:.2s}
+.task.done{background:#f0fdf4;border-color:#bbf7d0}
+.tick{width:28px;height:28px;border-radius:50%;border:2px solid #d1d5db;flex:none;display:flex;align-items:center;justify-content:center;
+  color:#fff;font-size:15px;background:#fff;transition:.2s;margin-top:2px}
+.task.done .tick{background:var(--ok);border-color:var(--ok);animation:pop .38s ease}
+@keyframes pop{0%{transform:scale(.6)}60%{transform:scale(1.25)}100%{transform:scale(1)}}
+.tbody{flex:1;min-width:0}
+.ttext{font-size:15px;line-height:1.45;word-break:break-word}
+.task.done .ttext{text-decoration:line-through;color:#6b7280}
+.tmeta{font-size:11.5px;color:var(--muted);margin-top:5px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pill{background:#f3f4f6;border-radius:999px;padding:2px 8px}
+.pill.ok{background:#dcfce7;color:#15803d}
+.pill.time{background:#eef2ff;color:var(--primary-d)}
+.tact{display:flex;gap:4px;flex:none}
+.tact button{background:transparent;color:#9ca3af;font-size:16px;padding:4px 6px}
+.tact button:hover{color:var(--danger)}
+.empty{text-align:center;color:var(--muted);font-size:13px;padding:24px 0}
+
+/* ---------- 分组 / 计时 / 操作 ---------- */
+.group h3{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px;margin:16px 0 8px}
+.group h3 .gline{flex:1;height:1px;background:var(--line)}
+.badge{font-size:12px;padding:3px 10px;border-radius:999px;font-weight:600}
+.badge.语文{background:#fee2e2;color:#b91c1c}
+.badge.数学{background:#dbeafe;color:#1d4ed8}
+.badge.英语{background:#fef3c7;color:#b45309}
+.badge.其他{background:#e5e7eb;color:#4b5563}
+select.cat{border:1px solid var(--line);border-radius:8px;padding:2px 6px;font-size:12px;font-family:inherit;background:#fff;color:var(--muted)}
+.timer{font-weight:700;color:var(--warn)}
+.ops{display:flex;gap:6px;flex:none;align-items:center;margin-left:auto}
+.ops button{padding:7px 12px;font-size:13px;white-space:nowrap}
+.ops .mini{background:transparent;color:#9ca3af;font-size:15px;padding:6px 4px}
+.ops .mini:hover{color:var(--danger)}
+.pill.run{background:#fef3c7;color:#b45309}
+.pill.due{background:#dbeafe;color:#1d4ed8}
+select.req{border:1px solid #fca5a5;border-radius:8px;padding:2px 6px;font-size:12px;font-family:inherit;background:#fff5f5;color:#b91c1c}
+/* 提醒区 */
+.notes{background:#fffbeb;border:1px solid #fde68a;border-radius:14px;padding:10px 12px;margin-bottom:12px}
+.notes .ntitle{font-size:12px;font-weight:700;color:#b45309;margin-bottom:4px}
+.note{display:flex;gap:8px;align-items:flex-start;font-size:13.5px;color:#92400e;padding:3px 0;line-height:1.5}
+.note button{margin-left:auto;background:transparent;border:none;color:#b45309;font-size:14px;padding:0 2px;flex:none}
+
+/* ---------- 全部完成横幅 ---------- */
+.banner{display:none;margin-bottom:12px;padding:14px;border-radius:14px;text-align:center;font-weight:700;
+  background:linear-gradient(135deg,#fef08a,#bbf7d0);color:#166534;font-size:15px;animation:pop .5s ease}
+.banner.show{display:block}
+
+/* ---------- 图片区 ---------- */
+.gallery{display:flex;gap:10px;flex-wrap:wrap}
+.gallery img{width:88px;height:88px;object-fit:cover;border-radius:12px;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.12);cursor:pointer}
+
+/* ---------- 弹窗 / Toast ---------- */
+.modal{position:fixed;inset:0;background:rgba(17,24,39,.55);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}
+.modal .box{background:#fff;border-radius:18px;max-width:640px;width:100%;max-height:84vh;overflow:auto;padding:18px}
+.modal .box h3{font-size:16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+.modal img{max-width:100%;border-radius:12px}
+#toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:#111827;color:#fff;
+  padding:10px 18px;border-radius:999px;font-size:14px;opacity:0;pointer-events:none;transition:.25s;z-index:60;max-width:88vw;text-align:center}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#confetti{position:fixed;inset:0;pointer-events:none;z-index:40}
+
+/* ---------- 历史 ---------- */
+.hday{border:1px solid var(--line);border-radius:14px;margin-bottom:8px;overflow:hidden}
+.hday .h{display:flex;justify-content:space-between;align-items:center;padding:12px;background:#f9fafb;font-size:14px}
+.hday .h .n{font-weight:600}
+.hday .d{padding:0 12px 10px;font-size:12.5px;color:var(--muted);display:none}
+.hday.open .d{display:block}
+.hday .d li{margin:4px 0;list-style:none}
+.hday ul{margin:6px 0 0;padding:0}
+@media (max-width:520px){
+  .stats{grid-template-columns:repeat(4,1fr);gap:6px}
+  .stat{padding:8px 4px}
+  .stat b{font-size:16px}
+  .stat span{font-size:10px}
+  .titles h1{font-size:16px}
+}
+</style>
+</head>
+<body>
+<canvas id="confetti"></canvas>
+
+<div class="topbar">
+  <div class="logo">作</div>
+  <div class="titles">
+    <h1>作业小管家</h1>
+    <p>拍照扫描作业 · 逐项打卡 · 记录完成时间</p>
+  </div>
+  <label class="kid">小朋友 <input id="kidName" placeholder="名字" maxlength="8"></label>
+</div>
+
+<!-- 扫描区 -->
+<section class="card">
+  <h2>1 · 扫描作业 <span class="tag">OCR 自动识别 + 手动补充</span></h2>
+  <div class="datebar">
+    <div class="nav">
+      <button id="prevDay" class="ghost">‹ 前一天</button>
+      <input type="date" id="datePick">
+      <button id="nextDay" class="ghost">后一天 ›</button>
+    </div>
+    <span id="todayChip" class="today-chip"></span>
+  </div>
+
+  <div id="drop" class="drop">
+    <p>把老师发的作业拍照 / 截图，或用文字粘贴进来</p>
+    <div class="row" style="justify-content:center">
+      <button class="btn" id="pickImg">拍照 / 选择图片</button>
+      <button class="btn ghost" id="toggleManual">手动输入文字</button>
+    </div>
+    <input type="file" id="fileInput" accept="image/*" capture="environment" class="hidden">
+    <div class="progress hidden" id="progWrap"><i id="progBar"></i></div>
+    <div class="status" id="ocrStatus"></div>
+  </div>
+
+  <div id="manualBox" class="hidden" style="margin-top:12px">
+    <textarea id="manualText" rows="5" placeholder="按老师发的格式粘贴即可，一行一项，例如：&#10;语文：必做 1.抄写第8课生字3遍 2.背诵课文&#10;选做 3.日记一篇&#10;数学：必做 练习册 P24-25&#10;英语：必做 听读 Unit3&#10;提醒：明天带跳绳"></textarea>
+    <div class="row" style="margin-top:8px"><button class="btn ok" id="parseManual">拆分成任务项</button></div>
+  </div>
+</section>
+
+<!-- 候选任务 -->
+<section class="card hidden" id="candCard">
+  <h2>2 · 确认任务项 <span class="tag">已按科目 / 必做 / 选做 / 提醒 整理，可改</span></h2>
+  <div id="candList"></div>
+  <div class="row" style="margin-top:12px">
+    <button class="btn ok" id="addCand">加入今天的清单</button>
+    <button class="btn ghost" id="clearCand">清空</button>
+  </div>
+</section>
+
+<!-- 任务清单 -->
+<section class="card">
+  <h2>3 · 今日任务清单 <span class="tag" id="taskDate"></span></h2>
+  <div class="stats">
+    <div class="stat"><b id="sDone">0/0</b><span>已完成</span></div>
+    <div class="stat"><b id="sTime">0分</b><span>今日用时</span></div>
+    <div class="stat"><b id="sStar">0</b><span>今日星星</span></div>
+    <div class="stat"><b id="sStreak">0</b><span>连续全完成</span></div>
+  </div>
+  <div class="progress"><i id="mainBar" style="width:0%"></i></div>
+  <div class="banner" id="banner"></div>
+  <div id="noteBox"></div>
+  <div id="taskList" style="margin-top:12px"></div>
+  <div class="row" style="margin-top:12px">
+    <button class="btn ghost" id="exportDay">导出今天 CSV</button>
+    <button class="btn ghost" id="openHistory">历史记录</button>
+    <button class="btn danger" id="clearDay">清空今天</button>
+  </div>
+</section>
+
+<!-- 图片存档 -->
+<section class="card hidden" id="galCard">
+  <h2>作业原图 <span class="tag">点击查看大图</span></h2>
+  <div class="gallery" id="gallery"></div>
+</section>
+
+<div id="toast"></div>
+<div id="modal" class="modal hidden"><div class="box" id="modalBox"></div></div>
+
+<script>
+/* ====================== 基础工具 ====================== */
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const KEY = 'homework-helper-v1';
+
+function pad(n){return n<10?'0'+n:''+n}
+function dayKey(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
+function todayKey(){return dayKey(new Date())}
+function fmtTime(ts){const d=new Date(ts);return pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())}
+function fmtHM(ts){const d=new Date(ts);return pad(d.getHours())+':'+pad(d.getMinutes())}
+function fmtDur(ms, withSec){
+  if(ms==null) return '';
+  ms = Math.max(0, ms);
+  const s = Math.round(ms/1000), m = Math.floor(s/60);
+  if(withSec && m < 1) return s+' 秒';
+  if(m < 60) return m+' 分钟';
+  return Math.floor(m/60)+' 小时 '+ (m%60) + ' 分';
+}
+/* 任务真实耗时：有开始时间用 开始→完成，否则退回 加入→完成 */
+function taskDur(t){
+  if(t.startAt && t.doneAt) return t.doneAt - t.startAt;
+  if(t.doneAt) return t.doneAt - t.createdAt;
+  return null;
+}
+function taskState(t){
+  if(t.doneAt) return 'done';
+  if(t.startAt) return 'running';
+  return 'idle';
+}
+const CATS = ['语文','数学','英语','其他'];
+function guessCategory(text){
+  const s = String(text||'');
+  if(/英语|英文|单词|音标|ABC|English/i.test(s)) return '英语';
+  if(/语文|生字|课文|抄写|背诵|作文|日记|古诗|阅读理解|拼音|听写|汉字|朗读|组词/.test(s)) return '语文';
+  if(/数学|口算|竖式|应用题|算术|计算|思维题|奥数|换算|几何|图形|乘法|除法/.test(s)) return '数学';
+  return '其他';
+}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
+
+/* ====================== 数据 ====================== */
+let state = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(KEY);
+    if(raw){const o=JSON.parse(raw); if(o && o.days) return Object.assign({childName:'',days:{}},o);}
+  }catch(e){}
+  return {childName:'',days:{}};
+}
+function save(){
+  try{ localStorage.setItem(KEY, JSON.stringify(state)); }
+  catch(e){ toast('本地存储写入失败：'+e.message); }
+}
+function day(k){
+  if(!state.days[k]) state.days[k]={tasks:[],images:[],notes:[]};
+  if(!state.days[k].notes) state.days[k].notes=[];
+  return state.days[k];
+}
+let curDay = todayKey();
+
+/* 兼容旧版本数据：补齐分类与开始时间字段 */
+(function migrate(){
+  Object.keys(state.days||{}).forEach(k=>{
+    if(!state.days[k].notes) state.days[k].notes = [];
+    (state.days[k].tasks||[]).forEach(t=>{
+      if(!t.cat) t.cat = guessCategory(t.text);
+      if(!t.req) t.req = '必做';
+      if(t.due === undefined) t.due = '';
+      if(t.startAt === undefined) t.startAt = null;
+      if(t.doneAt === undefined) t.doneAt = null;
+      if(t.done && !t.doneAt) t.doneAt = t.createdAt;
+    });
+  });
+})();
+
+/* ====================== 图片存储（IndexedDB，失败降级 localStorage） ====================== */
+const ImgDB = (()=>{
+  const NAME='homework-helper', STORE='images';
+  let dbp=null;
+  function open(){
+    if(dbp) return dbp;
+    dbp = new Promise((res,rej)=>{
+      let req;
+      try{ req = indexedDB.open(NAME,1); }catch(e){ return rej(e); }
+      req.onupgradeneeded = ()=>{ req.result.createObjectStore(STORE); };
+      req.onsuccess = ()=>res(req.result);
+      req.onerror = ()=>rej(req.error||new Error('idb error'));
+    }).catch(e=>{ dbp=null; throw e; });
+    return dbp;
+  }
+  async function put(id,val){
+    const db=await open();
+    return new Promise((res,rej)=>{
+      const tx=db.transaction(STORE,'readwrite');
+      tx.objectStore(STORE).put(val,id);
+      tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error);
+    });
+  }
+  async function get(id){
+    const db=await open();
+    return new Promise((res,rej)=>{
+      const tx=db.transaction(STORE,'readonly');
+      const r=tx.objectStore(STORE).get(id);
+      r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);
+    });
+  }
+  return {put,get};
+})();
+
+async function storeImage(id, full, thumb){
+  try{ await ImgDB.put(id, full); return 'idb'; }
+  catch(e){
+    try{ localStorage.setItem('hh-img-'+id, thumb); return 'ls'; }
+    catch(e2){ return 'none'; }
+  }
+}
+async function loadImage(id){
+  try{ const v = await ImgDB.get(id); if(v) return v; }catch(e){}
+  return localStorage.getItem('hh-img-'+id);
+}
+
+/* 灰度 + 自动对比度拉伸：显著提升 OCR 对小字和彩色底纹的识别率 */
+function grayContrast(cv, ctx){
+  const w=cv.width, h=cv.height;
+  const im = ctx.getImageData(0,0,w,h), p = im.data;
+  const n = w*h;
+  const g = new Uint8Array(n);
+  let min=255, max=0;
+  for(let i=0;i<n;i++){
+    const j=i*4;
+    const v = p[j]*0.299 + p[j+1]*0.587 + p[j+2]*0.114;
+    g[i] = v;
+    if(v<min) min=v;
+    if(v>max) max=v;
+  }
+  if(max-min < 30){ min=0; max=255; }
+  const span = max-min;
+  for(let i=0;i<n;i++){
+    let v = Math.round((g[i]-min)/span*255);
+    if(v<0) v=0; else if(v>255) v=255;
+    const j=i*4;
+    p[j]=p[j+1]=p[j+2]=v; p[j+3]=255;
+  }
+  ctx.putImageData(im,0,0);
+}
+/* 压缩图片：返回 {full, thumb, ocr}
+   full/thumb 用于存档；ocr 是给识别用的高分辨率灰度图（PNG 无损） */
+function compress(file, maxSide=1280, q=.72){
+  return new Promise((res,rej)=>{
+    const fr = new FileReader();
+    fr.onload = ()=>{
+      const img = new Image();
+      img.onload = ()=>{
+        const base = Math.max(img.width, img.height);
+        // OCR 专用：放大到最多 1800px（不长边超过 2 倍），灰度 + 对比度
+        const so = Math.min(2, 1800/base);
+        const ow = Math.round(img.width*so), oh = Math.round(img.height*so);
+        const oc = document.createElement('canvas'); oc.width=ow; oc.height=oh;
+        const octx = oc.getContext('2d'); octx.drawImage(img,0,0,ow,oh);
+        grayContrast(oc, octx);
+        const ocr = oc.toDataURL('image/png');
+        // 存档用压缩图
+        const scale = Math.min(1, maxSide/base);
+        const w = Math.round(img.width*scale), h = Math.round(img.height*scale);
+        const c = document.createElement('canvas'); c.width=w; c.height=h;
+        const ctx = c.getContext('2d'); ctx.drawImage(img,0,0,w,h);
+        const full = c.toDataURL('image/jpeg', q);
+        const tw = Math.round(w*0.28), th = Math.round(h*0.28);
+        const c2 = document.createElement('canvas'); c2.width=tw; c2.height=th;
+        c2.getContext('2d').drawImage(c,0,0,tw,th);
+        res({full, thumb: c2.toDataURL('image/jpeg',.6), ocr, w, h});
+      };
+      img.onerror = ()=>rej(new Error('图片读取失败'));
+      img.src = fr.result;
+    };
+    fr.onerror = ()=>rej(new Error('文件读取失败'));
+    fr.readAsDataURL(file);
+  });
+}
+
+/* ====================== 作业文本 → 结构化任务 ======================
+   能读懂老师常用的格式，例如：
+     语文：必做 1.抄写第8课生字 2.背诵课文  选做 3.日记一篇
+     数学：必做 练习册 P24-25
+     提醒：明天带跳绳
+   规则：科目行 → 归到该科目；必做/选做行 → 标记；提醒行 → 进"提醒"区不做任务；
+        纯日期/时间行（10月14日、星期四、18:30）→ 丢弃，不生成任务；
+        正文里带的时间（17:30前）→ 提取为"截止"，不污染任务名。
+=================================================================== */
+const SUBJECTS = {'语文':'语文','数学':'数学','英语':'英语','英文':'英语','外语':'英语','探究':'其他','科学':'其他','道法':'其他','体育':'其他','美术':'其他','音乐':'其他','其它':'其他','其他':'其他'};
+const EN_SUBJECTS = {chinese:'语文',math:'数学',maths:'数学',english:'英语',inquiry:'其他',science:'其他'};
+function normCat(name){
+  if(!name) return '其他';
+  const k = String(name).trim().toLowerCase();
+  if(SUBJECTS[name]) return SUBJECTS[name];
+  if(EN_SUBJECTS[k]) return EN_SUBJECTS[k];
+  for(const key in SUBJECTS){ if(name.indexOf(key)>=0) return SUBJECTS[key]; }
+  return '其他';
+}
+/* 识别科目标题行，支持中英混排："Chinese语文:" "Math数学：" "English英语:" "Inquiry探究:" "Reminder其他提醒:" "语文:" */
+function matchSubject(s){
+  let m = s.match(/^([A-Za-z]{2,12})\s*(其他提醒|语文|数学|英语|英文|外语|探究|科学|道法|体育|美术|音乐|其它|其他|提醒)?\s*[:：]?\s*(.*)$/i);
+  if(m && m[1]){
+    const en = m[1].toLowerCase();
+    if(/^reminder/.test(en)) return {note:true, rest:m[3]||''};
+    if(EN_SUBJECTS[en] !== undefined) return {cat:EN_SUBJECTS[en], rest:m[3]||''};
+  }
+  m = s.match(/^(其他提醒|语文|数学|英语|英文|外语|探究|科学|道法|体育|美术|音乐|其它|其他|提醒)\s*[:：]?\s*(.*)$/);
+  if(m){
+    if(/^(其他提醒|提醒)$/.test(m[1])) return {note:true, rest:m[2]||''};
+    return {cat:SUBJECTS[m[1]]||'其他', rest:m[2]||''};
+  }
+  return null;
+}
+function stripBullet(s){
+  s = s.replace(/^-\s*\d{1,2}\s*(?=[A-Za-z\u4e00-\u9fff])/,'');   // "-1 IXL..." → "IXL..."
+  s = s.replace(/^[\s\-–—•·*]+/,'');
+  s = s.replace(/^[（(【\[]?\d{1,2}[）)\]】\.、,，:：]\s*/,'');
+  s = s.replace(/^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]\s*/,'');
+  s = s.replace(/^第\s*\d+\s*[、，,]\s*/,'');
+  return s.trim();
+}
+function extractDue(s){
+  const m = s.match(/\d{1,2}\s*[:：]\s*\d{2}/)
+    || s.match(/(今晚|明天|明早|早上|中午|下午|晚上)?\s*(\d{1,2}|[一二三四五六七八九十]+)\s*[点時时](半)?/);
+  return m ? m[0].replace(/\s+/g,'') : '';
+}
+/* OCR 常在汉字/中英之间插空格（"语 文 :"、"晚 11 点"），合并回来 */
+function compactCn(s){
+  for(let i=0;i<2;i++){
+    s = s.replace(/([\u4e00-\u9fff《》〈〉（）""''，。：；、！？:·])\s+(?=[\u4e00-\u9fff《》〈〉（）""''，。：；、！？:·])/g,'$1')
+         .replace(/([\u4e00-\u9fff])\s+(?=\d)/g,'$1')
+         .replace(/(\d)\s+(?=[\u4e00-\u9fff])/g,'$1')
+         .replace(/([A-Za-z])\s+(?=[\u4e00-\u9fff])/g,'$1');
+  }
+  return s.trim();
+}
+/* 只剩日期/星期/钟点的行 → 不算任务（如 "10月14日 星期四"、"18:30"、"家长签字"） */
+function isPureDate(s){
+  if(/home\s*work|home\s*learn|homework/i.test(s)) return true;   // "3E Home learning" 这类标题
+  if(/^(3e)?\s*hom/i.test(s.trim()) && s.trim().length<20) return true;   // "3E Home learning" 标题及其截断残片
+  if(/^(今天|明天|昨天|今晚|家长签字|签名|已读|已阅)$/.test(s.trim())) return true;
+  const rest = s
+    .replace(/\d{4}\s*[年\-\/]\s*\d{1,2}\s*[月\-\/]\s*\d{1,2}\s*日?/g,'')
+    .replace(/\d{1,2}\s*月\s*\d{1,2}\s*日?/g,'')
+    .replace(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*\d{1,2}\s*(st|nd|rd|th)?/gi,'')
+    .replace(/星期[一二三四五六日天]/g,'')
+    .replace(/周[一二三四五六日天]/g,'')
+    .replace(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/gi,'')
+    .replace(/\d{1,2}\s*[:：]\s*\d{2}/g,'')
+    .replace(/[\s,，、:：\-—·.。]/g,'');
+  return rest.length < 2;
+}
+/* 括号内容单独成一条：
+   "习作《续写故事》（10月13日晚11点前…上交习作指导单。）" → 两条
+   "预习：（L12）" → 合成 "预习：L12"；"抄写（3遍）" 这种数量词不拆 */
+function splitByParen(s){
+  const out=[], re=/[（(]([^（）()]+)[）)]/g;
+  let last=0, m, hit=false;
+  const isReq = x => /^(必做|选做|选作|拓展|提高|挑战)$/.test(x);
+  const pushInner = inner => { if(inner.length>=2 && !isReq(inner)) out.push(inner); };
+  while((m=re.exec(s))){
+    hit = true;
+    const before = s.slice(last, m.index).trim().replace(/[:：]\s*$/, ':');
+    const inner = m[1].trim();
+    if(before.length>=2){
+      if(/[:：]$/.test(before)){ if(inner) out.push(before + inner); }        // 标签+括号 → 合成一条
+      else if(/^[\d一二三四五六七八九十]+\s*(遍|次|页|题|个|行|分钟)$/.test(inner)){ out.push(before + '（' + inner + '）'); }   // 数量词不拆
+      else if(/^(第[\d一二三四五六七八九十]+[课页单元篇题]|P?\d+\s*[-~]\s*\d+|[Pp]\d+)$/.test(inner)){ out.push(before + '（' + inner + '）'); }  // 定位词不拆
+      else { out.push(before); pushInner(inner); }
+    }else pushInner(inner);
+    last = m.index + m[0].length;
+  }
+  const after = s.slice(last).trim();
+  if(after.length>=2) out.push(after);
+  if(!hit) return [s];
+  return out.filter(x=>x && x.length>=2);
+}
+/* 同一行里挤了多道题："1.抄写 2.背诵" → 拆成两项 */
+function splitMulti(s){
+  const a = s.split(/\s+(?=\d{1,2}\s*[.、,，)）])/).map(x=>x.trim()).filter(Boolean);
+  if(a.length > 1) return a;
+  const b = s.split(/\s*(?=[①②③④⑤⑥⑦⑧⑨⑩])/).map(x=>x.trim()).filter(Boolean);
+  return b.length > 1 ? b : [s];
+}
+function parseStructured(text){
+  let cat='其他', req='必做', noteMode=false;
+  const tasks=[], notes=[], seen=new Set(), seenN=new Set();
+  const lines = String(text||'').split(/\r?\n/).map(s=>compactCn(s.trim())).filter(Boolean);
+  for(let idx=0; idx<lines.length; idx++){
+    let s = stripBullet(lines[idx]);
+    if(!s) continue;
+
+    // 科目标题 / 提醒标题（中英混排均可）
+    const sub = matchSubject(s);
+    if(sub){
+      if(sub.note){ noteMode = true; }
+      else{ noteMode = false; cat = sub.cat || cat; req = '必做'; }  // 每个科目默认从必做开始
+      s = (sub.rest||'').trim();
+      if(!s) continue;
+    }
+
+    // 英文长句被 OCR 断行："…in ancient Egypt" + "would look like" → 合并
+    if(idx+1 < lines.length && !/[.。:：！？;；,，]$/.test(s.trim())
+       && /^[a-z]/.test(lines[idx+1].trim()) && !matchSubject(lines[idx+1])){
+      s = s.trim() + ' ' + stripBullet(lines[idx+1]);
+      idx++;
+    }
+
+    // 必做 / 选做
+    const rm = s.match(/^(必做|必写|选做|选作|拓展|提高|挑战)[题]?\s*[:：]?\s*(.*)$/);
+    if(rm){ req = /^必/.test(rm[1]) ? '必做' : '选做'; noteMode=false; s = rm[2].trim(); if(!s) continue; }
+
+    // 冒号语义：冒号后没内容时，把下一行并进来（"预习：\nL12" → "预习：L12"），最多吃 1 行
+    if(/[:：]\s*$/.test(s) && idx+1 < lines.length){
+      const nxt = stripBullet(lines[idx+1]);
+      if(nxt && !matchSubject(nxt) && !/^(必做|必写|选做|选作|拓展|提高|挑战)[题]?\s*[:：]?/.test(nxt)){
+        s = s.replace(/[:：]\s*$/,'') + ':' + nxt;
+        idx++;
+      }
+    }
+
+    // 提醒区块：直到下一个科目/必做之前，都算提醒
+    if(noteMode){
+      const one = s.replace(/^(提醒|注意|温馨提示|家长|备注)\s*[:：]?\s*/,'').replace(/^[:：]\s*/,'');
+      splitByParen(one).forEach(x=>{
+        if(x && x.length>=2 && !isPureDate(x) && !/^[^一-鿿]{0,12}$/.test(x) && !seenN.has(x)){ seenN.add(x); notes.push(x); }
+      });
+      continue;
+    }
+
+    // 单行提醒（"提醒：xxx" / "明天带…"）
+    if(/^(提醒|注意|温馨提示|家长|备注|准备|明日|明天|今天|请|需要|记得|带|交|穿)/.test(s) && s.length<=60){
+      const one = s.replace(/^(提醒|注意|温馨提示|家长|备注)\s*[:：]?\s*/,'').replace(/^[:：]\s*/,'');
+      splitByParen(one).forEach(x=>{ if(x && !seenN.has(x)){ seenN.add(x); notes.push(x); } });
+      continue;
+    }
+
+    // 括号内容独立成条，一行多题也拆开
+    splitMulti(s).forEach(part=>{
+      splitByParen(part).forEach(piece=>{
+        const one = stripBullet(piece);
+        if(!one || one.length<2) return;
+        if(isPureDate(one)) return;              // 纯日期/时间/标题行：丢弃
+        if(seen.has(one)) return; seen.add(one);
+        tasks.push({text:one, cat, req, due: extractDue(one)});
+      });
+    });
+  }
+  return {tasks, notes};
+}
+
+/* ====================== 渲染 ====================== */
+function taskHTML(t){
+  const st = taskState(t), dur = taskDur(t), cat = t.cat || '其他', req = t.req || '必做';
+  const ops = st==='idle' ? '<button class="btn ok" data-act="start">开始</button>'
+    : st==='running' ? '<button class="btn" data-act="finish">完成</button><button class="btn-sm" data-act="stop">停止</button>'
+    : '<button class="btn-sm" data-act="redo">撤销</button>';
+  const statePill = {idle:'待开始', running:'进行中', done:'已完成'}[st];
+  return '<div class="task'+(st==='done'?' done':'')+'" data-id="'+t.id+'">'
+    + '<div class="tick" data-act="toggle">'+(st==='done'?'&#10003;':'')+'</div>'
+    + '<div class="tbody">'
+    +   '<div class="ttext" data-act="edit" title="点击可修改">'+esc(t.text)+'</div>'
+    +   '<div class="tmeta">'
+    +     '<select class="cat" data-act="cat" title="切换科目">'
+    +       CATS.map(c=>'<option'+(c===cat?' selected':'')+'>'+c+'</option>').join('')+'</select>'
+    +     '<select class="req" data-act="req" title="必做 / 选做">'
+    +       ['必做','选做'].map(r=>'<option'+(r===req?' selected':'')+'>'+r+'</option>').join('')+'</select>'
+    +     (t.due? '<span class="pill due">截止 '+esc(t.due)+'</span>':'')
+    +     '<span class="pill'+(st==='done'?' ok':(st==='running'?' run':''))+'">'+statePill+'</span>'
+    +     (t.startAt? '<span class="pill time">开始 '+fmtHM(t.startAt)+'</span>':'')
+    +     (t.doneAt? '<span class="pill time">完成 '+fmtHM(t.doneAt)+'</span>':'')
+    +     (st==='running'
+          ? '<span class="timer" data-timer="'+t.id+'">已进行 '+fmtDur(Date.now()-t.startAt, true)+'</span>'
+          : (dur!=null? '<span class="pill">用时 '+fmtDur(dur)+'</span>':''))
+    +     '<span class="pill">'+(t.source==='ocr'?'来自扫描':'手动添加')+'</span>'
+    +   '</div>'
+    + '</div>'
+    + '<div class="ops">'+ops+'<button class="mini" data-act="del" title="删除">&#10005;</button></div>'
+    + '</div>';
+}
+
+function render(){
+  const d = day(curDay);
+  $('#datePick').value = curDay;
+  $('#taskDate').textContent = curDay + (curDay===todayKey()?'（今天）':'');
+  $('#todayChip').textContent = curDay===todayKey() ? '今天' : '查看历史日期';
+  $('#kidName').value = state.childName || '';
+
+  const total = d.tasks.length, done = d.tasks.filter(t=>taskState(t)==='done').length;
+  const sumMs = d.tasks.reduce((a,t)=>a + (taskDur(t)||0), 0);
+  $('#sDone').textContent = done+'/'+total;
+  $('#sTime').textContent = sumMs? fmtDur(sumMs) : '0分';
+  $('#sStar').textContent = done;
+  $('#sStreak').textContent = streak();
+  $('#mainBar').style.width = (total? Math.round(done/total*100):0)+'%';
+
+  const banner = $('#banner');
+  if(total>0 && done===total){
+    banner.textContent = '全部完成！共 '+total+' 项，实际用时 '+fmtDur(sumMs)+'，太棒了！';
+    banner.classList.add('show');
+  }else banner.classList.remove('show');
+
+  // 提醒区
+  const nb = $('#noteBox');
+  nb.innerHTML = d.notes.length
+    ? '<div class="notes"><div class="ntitle">提醒（不需要打卡，看一眼就行）</div>'
+      + d.notes.map(n=>'<div class="note"><span>'+esc(n.text)+'</span>'
+        + '<button data-act="delnote" data-nid="'+n.id+'" title="删除">&#10005;</button></div>').join('')
+      + '</div>'
+    : '';
+
+  const box = $('#taskList');
+  if(!total){ box.innerHTML = '<div class="empty">还没有任务项。先扫描一张作业图片，或手动输入作业内容吧。</div>'; }
+  else{
+    const groups = CATS.map(c=>{
+      const list = d.tasks.filter(t=>(t.cat||'其他')===c);
+      if(!list.length) return null;
+      list.sort((a,b)=>((a.req==='选做')?1:0) - ((b.req==='选做')?1:0)); // 必做排前面
+      return [c, list];
+    }).filter(Boolean);
+    box.innerHTML = groups.map(([c, list])=>{
+      const must = list.filter(t=>(t.req||'必做')==='必做');
+      const opt  = list.filter(t=>(t.req||'必做')==='选做');
+      const dn = list.filter(t=>taskState(t)==='done').length;
+      const md = must.filter(t=>taskState(t)==='done').length;
+      return '<div class="group"><h3><span class="badge '+c+'">'+c+'</span>'
+        + '<span>必做 '+md+'/'+must.length+'</span>'
+        + (opt.length? '<span>选做 '+opt.filter(t=>taskState(t)==='done').length+'/'+opt.length+'</span>':'')
+        + '<span class="gline"></span>'
+        + '<span>'+fmtDur(list.reduce((a,t)=>a+(taskDur(t)||0),0))+'</span></h3>'
+        + list.map(taskHTML).join('') + '</div>';
+    }).join('');
+  }
+
+  const gal = $('#gallery'), card = $('#galCard');
+  card.classList.toggle('hidden', !d.images.length);
+  gal.innerHTML = d.images.map(im=>'<img src="'+(im.thumb||'')+'" data-id="'+im.id+'" alt="作业原图">').join('');
+}
+
+function streak(){
+  let n=0, d=new Date();
+  for(let i=0;i<365;i++){
+    const k=dayKey(d), rec=state.days[k];
+    if(rec && rec.tasks.length){
+      if(rec.tasks.every(t=>taskState(t)==='done')) n++; else break;
+    }
+    d.setDate(d.getDate()-1);
+  }
+  return n;
+}
+
+/* ====================== 任务操作 ====================== */
+function addTasks(items, source, imgId){
+  const d = day(curDay);
+  let n=0;
+  items.forEach(it=>{
+    const text = String(it.text||'').trim(); if(!text) return;
+    d.tasks.push({
+      id:uid(), text, done:false, createdAt:Date.now(),
+      startAt:null, doneAt:null,
+      cat: it.cat || guessCategory(text),
+      req: it.req || '必做',
+      due: it.due || extractDue(text),
+      source: source||'manual', imgId: imgId||null
+    });
+    n++;
+  });
+  save(); render();
+  if(n) toast('已加入 '+n+' 项任务（已分好科目与必做/选做）');
+}
+function addNotes(list){
+  const d = day(curDay);
+  let n=0;
+  (list||[]).forEach(s=>{ s=String(s||'').trim(); if(!s) return; d.notes.push({id:uid(), text:s, ts:Date.now()}); n++; });
+  save(); render();
+  if(n) toast('已加入 '+n+' 条提醒');
+}
+
+$('#taskList').addEventListener('click', e=>{
+  const el = e.target.closest('[data-act]'); if(!el) return;
+  const row = e.target.closest('.task'); if(!row) return;
+  const id = row.dataset.id;
+  const act = el.dataset.act;
+  const d = day(curDay);
+  const t = d.tasks.find(x=>x.id===id); if(!t) return;
+
+  if(act==='start'){
+    t.startAt = Date.now(); save(); render();
+    playTone([660,880], .12);
+    toast('开始做「'+t.text+'」，计时中…');
+  }
+  else if(act==='finish'){
+    t.doneAt = Date.now(); if(!t.startAt) t.startAt = t.createdAt; t.done=true; save();
+    const used = fmtDur(t.doneAt - t.startAt);
+    celebrate(el); render();
+    toast('「'+t.text+'」完成！用时 '+used);
+    if(d.tasks.every(x=>taskState(x)==='done')) bigWin(d);
+  }
+  else if(act==='stop'){
+    if(!confirm('停止计时？已进行的 '+fmtDur(Date.now()-t.startAt)+' 不会被记录。')) return;
+    t.startAt=null; save(); render();
+  }
+  else if(act==='redo'){
+    if(!confirm('撤销「'+t.text+'」的完成状态？开始/完成时间都会清除。')) return;
+    t.done=false; t.doneAt=null; t.startAt=null; save(); render();
+  }
+  else if(act==='toggle'){
+    if(taskState(t)==='done'){
+      if(!confirm('取消「'+t.text+'」的完成状态？完成时间会被清除。')) return;
+      t.done=false; t.doneAt=null; t.startAt=null; save(); render(); return;
+    }
+    t.done=true; t.doneAt=Date.now(); if(!t.startAt) t.startAt=t.createdAt; save();
+    celebrate(el); render();
+    if(d.tasks.every(x=>taskState(x)==='done')) bigWin(d);
+  }
+  else if(act==='edit'){
+    const span = el;
+    const input = document.createElement('input');
+    input.type='text'; input.value=t.text; input.className='ttext';
+    input.style.cssText='width:100%;border:1px solid #6366f1;border-radius:8px;padding:6px 8px;font-size:15px;font-family:inherit';
+    span.replaceWith(input); input.focus();
+    const finish = ()=>{
+      const v = input.value.trim();
+      if(v) t.text=v;
+      save(); render();
+    };
+    input.addEventListener('blur', finish);
+    input.addEventListener('keydown', ev=>{ if(ev.key==='Enter') input.blur(); if(ev.key==='Escape') render(); });
+  }
+  else if(act==='del'){
+    if(!confirm('删除「'+t.text+'」？')) return;
+    d.tasks = d.tasks.filter(x=>x.id!==id); save(); render();
+  }
+});
+$('#taskList').addEventListener('change', e=>{
+  const el = e.target;
+  if(!el.dataset || (el.dataset.act!=='cat' && el.dataset.act!=='req')) return;
+  const row = el.closest('.task'); if(!row) return;
+  const d = day(curDay);
+  const t = d.tasks.find(x=>x.id===row.dataset.id); if(!t) return;
+  if(el.dataset.act==='cat') t.cat = el.value; else t.req = el.value;
+  save(); render();
+});
+$('#noteBox').addEventListener('click', e=>{
+  const b = e.target.closest('[data-act="delnote"]'); if(!b) return;
+  const d = day(curDay);
+  d.notes = d.notes.filter(n=>n.id!==b.dataset.nid);
+  save(); render();
+});
+
+/* 进行中的任务：每秒刷新"已进行"计时 */
+setInterval(()=>{
+  const d = state.days[curDay]; if(!d) return;
+  let running = false;
+  d.tasks.forEach(t=>{
+    if(t.startAt && !t.doneAt){
+      running = true;
+      const el = document.querySelector('[data-timer="'+t.id+'"]');
+      if(el) el.textContent = '已进行 ' + fmtDur(Date.now() - t.startAt, true);
+    }
+  });
+  if(running && !document.hidden) { /* 计时持续刷新 */ }
+}, 1000);
+
+/* ====================== 勾选后的表现 ====================== */
+const PRAISE = ['太棒了！','完成一项，继续加油！','厉害了！','做得很好！','又搞定一个！','效率真高！','坚持得不错！'];
+function toast(msg){
+  const t=$('#toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2200);
+}
+function celebrate(el){
+  const r = el.getBoundingClientRect();
+  confetti(r.left+r.width/2, r.top+r.height/2, 26);
+  playTone([880,1175], .16);
+  if(navigator.vibrate) navigator.vibrate(30);
+  toast(PRAISE[Math.floor(Math.random()*PRAISE.length)]);
+}
+function bigWin(d){
+  confetti(innerWidth/2, innerHeight*0.35, 160);
+  playTone([659,784,988,1319], .14);
+  setTimeout(()=>confetti(innerWidth/2, innerHeight*0.45, 120), 350);
+  if(navigator.vibrate) navigator.vibrate([60,60,60]);
+  const span = fmtDur(d.tasks.reduce((a,t)=>a+(taskDur(t)||0),0));
+  toast('全部完成！共 '+d.tasks.length+' 项，实际用时 '+span+'，今天非常棒！');
+}
+
+function playTone(freqs, dur){
+  try{
+    const AC = window.AudioContext||window.webkitAudioContext; if(!AC) return;
+    const ctx = playTone._ctx || (playTone._ctx = new AC());
+    freqs.forEach((f,i)=>{
+      const o=ctx.createOscillator(), g=ctx.createGain();
+      o.type='sine'; o.frequency.value=f;
+      const t0=ctx.currentTime+i*dur;
+      g.gain.setValueAtTime(0,t0);
+      g.gain.linearRampToValueAtTime(.18,t0+.02);
+      g.gain.exponentialRampToValueAtTime(.001,t0+dur);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(t0); o.stop(t0+dur+.05);
+    });
+  }catch(e){}
+}
+
+/* 彩带 */
+const cv=$('#confetti'), cx=cv.getContext('2d');
+let parts=[];
+function fitCanvas(){ cv.width=innerWidth; cv.height=innerHeight; }
+fitCanvas(); addEventListener('resize', fitCanvas);
+const COLORS=['#6366f1','#22c55e','#f59e0b','#ec4899','#06b6d4','#facc15','#a855f7'];
+function confetti(x,y,n){
+  for(let i=0;i<n;i++){
+    parts.push({
+      x, y,
+      vx:(Math.random()-.5)*9, vy:-(Math.random()*9+4),
+      g:.28, s:Math.random()*8+5,
+      c:COLORS[(Math.random()*COLORS.length)|0],
+      r:Math.random()*Math.PI, vr:(Math.random()-.5)*.3, life:90+Math.random()*40
+    });
+  }
+  if(!confetti._run){ confetti._run=true; requestAnimationFrame(loop); }
+}
+function loop(){
+  cx.clearRect(0,0,cv.width,cv.height);
+  parts = parts.filter(p=>(p.life--) > 0 && p.y < cv.height+40);
+  parts.forEach(p=>{
+    p.vy+=p.g; p.x+=p.vx; p.y+=p.vy; p.r+=p.vr;
+    cx.save(); cx.translate(p.x,p.y); cx.rotate(p.r);
+    cx.fillStyle=p.c; cx.fillRect(-p.s/2,-p.s/2,p.s,p.s*.6);
+    cx.restore();
+  });
+  if(parts.length) requestAnimationFrame(loop); else { confetti._run=false; cx.clearRect(0,0,cv.width,cv.height); }
+}
+
+/* ====================== OCR ====================== */
+const CDN = [
+  'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
+  'https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js'
+];
+const LANG_PATHS = [
+  'https://tessdata.projectnaptha.com/4.0.0',
+  'https://tessdata.projectnaptha.com/4.0.0_fast'
+];
+function loadScript(src){
+  return new Promise((res,rej)=>{
+    const s=document.createElement('script'); s.src=src; s.async=true;
+    s.onload=()=>res(); s.onerror=()=>rej(new Error('加载失败 '+src));
+    document.head.appendChild(s);
+  });
+}
+function withTimeout(p, ms, msg){
+  return new Promise((res,rej)=>{
+    const t = setTimeout(()=>rej(new Error(msg)), ms);
+    Promise.resolve(p).then(v=>{clearTimeout(t); res(v)}, e=>{clearTimeout(t); rej(e)});
+  });
+}
+async function ensureTesseract(){
+  if(window.Tesseract) return;
+  if(location.protocol === 'file:'){
+    throw new Error('当前是 file:// 打开，浏览器禁止加载识别引擎。请双击「启动（手机也能用）.bat」，用 http://localhost:8000/index.html 打开');
+  }
+  setStatus('正在加载识别引擎…');
+  for(const u of CDN){
+    try{ await withTimeout(loadScript(u), 15000, '引擎脚本加载超时（15s），可能是网络限制'); if(window.Tesseract) return; }catch(e){ console.warn(e); }
+  }
+  throw new Error('识别引擎加载失败，请检查网络后重试（也可直接用"手动输入文字"）');
+}
+function setStatus(txt, p){
+  $('#ocrStatus').textContent = txt||'';
+  const w=$('#progWrap'), b=$('#progBar');
+  if(p==null){ w.classList.add('hidden'); }
+  else{ w.classList.remove('hidden'); b.style.width = Math.max(0,Math.min(100,p*100))+'%'; }
+}
+/* 检测竖直分隔线并分栏（老师常用的两栏/三栏作业单，整图识别会把左右栏拼到一行） */
+function splitColumns(dataUrl){
+  return new Promise(res=>{
+    const img = new Image();
+    img.onload = ()=>{
+      try{
+        const c = document.createElement('canvas'); c.width=img.width; c.height=img.height;
+        const ctx = c.getContext('2d'); ctx.drawImage(img,0,0);
+        const d = ctx.getImageData(0,0,c.width,c.height).data;
+        const w=c.width, h=c.height;
+        const dark = new Float32Array(w);
+        for(let y=0;y<h;y++){
+          const row=y*w;
+          for(let x=0;x<w;x++){
+            const i=(row+x)*4;
+            const g=d[i]*0.299+d[i+1]*0.587+d[i+2]*0.114;
+            if(g<170) dark[x]++;
+          }
+        }
+        // 自适应阈值：整图偏暗（阴影）时不会误判成竖线
+        const ratios = Array.from(dark, v=>v/h);
+        const sorted = ratios.slice().sort((a,b)=>a-b);
+        const med = sorted[Math.floor(sorted.length/2)] || 0;
+        const mx = sorted[sorted.length-1] || 0;
+        if(mx < 0.55 || mx < med + 0.25){ res([dataUrl]); return; }   // 没有明显竖线
+        const th = Math.max(0.45, med + 0.2);
+        const lines=[];
+        for(let x=0;x<w;x++){
+          if(ratios[x] > th){
+            if(lines.length && x-lines[lines.length-1][1]<=4) lines[lines.length-1][1]=x;
+            else lines.push([x,x]);
+          }
+        }
+        const cuts=[0, ...lines.map(l=>Math.round((l[0]+l[1])/2)), w];
+        const pieces=[];
+        for(let i=0;i<cuts.length-1;i++){
+          const x0=cuts[i]+5, x1=cuts[i+1]-5;
+          if(x1-x0 > w*0.12) pieces.push([x0,x1]);
+        }
+        if(pieces.length<=1){ res([dataUrl]); return; }
+        res(pieces.map(([x0,x1])=>{
+          const cc=document.createElement('canvas'); cc.width=x1-x0; cc.height=h;
+          cc.getContext('2d').drawImage(c, x0,0,x1-x0,h, 0,0,x1-x0,h);
+          return cc.toDataURL('image/png');   // 无损，避免二次压缩降低识别率
+        }));
+      }catch(e){ res([dataUrl]); }
+    };
+    img.onerror = ()=>res([dataUrl]);
+    img.src = dataUrl;
+  });
+}
+
+async function runOCR(images){
+  await ensureTesseract();
+  let lastErr;
+  for(let i=0;i<LANG_PATHS.length;i++){
+    let worker=null;
+    try{
+      setStatus((i? '换个资源重试：':'')+'正在准备中英文识别库（首次约 20MB，请稍候）…', .02);
+      worker = await withTimeout(Tesseract.createWorker('chi_sim+eng', 1, {
+        langPath: LANG_PATHS[i],
+        logger: m=>{
+          if(m.status==='loading tesseract core') setStatus('加载核心…',.1);
+          else if(m.status==='initializing tesseract') setStatus('初始化引擎…',.2);
+          else if(m.status==='loading language traineddata') setStatus('下载中英文识别库… '+Math.round((m.progress||0)*100)+'%', .2+(m.progress||0)*.5);
+          else if(m.status==='initializing api') setStatus('初始化接口…',.75);
+        }
+      }), 60000, '引擎初始化超时（60s）。若用 file:// 打开请改用本地服务地址，或直接用"手动输入文字"');
+      const texts=[];
+      for(let k=0;k<images.length;k++){
+        setStatus(images.length>1
+          ? '正在识别第 '+(k+1)+'/'+images.length+' 栏… '+Math.round(((k+0.5)/images.length)*100)+'%'
+          : '正在识别文字…', (0.75 + (k+0.5)/images.length)*0.24);
+        const {data} = await withTimeout(worker.recognize(images[k]), 90000, '文字识别超时（90s），图片可能太大，可换张小一点的图');
+        texts.push(data.text);
+      }
+      await worker.terminate().catch(()=>{});
+      setStatus('识别完成', 1);
+      return texts.join('\n');
+    }catch(e){
+      lastErr = e;
+      try{ if(worker) await worker.terminate(); }catch(_){}
+    }
+  }
+  throw lastErr || new Error('OCR 失败');
+}
+
+/* ====================== 扫描交互 ====================== */
+$('#pickImg').addEventListener('click', ()=>$('#fileInput').click());
+$('#toggleManual').addEventListener('click', ()=>{
+  const b=$('#manualBox'); b.classList.toggle('hidden');
+  if(!b.classList.contains('hidden')) $('#manualText').focus();
+});
+$('#fileInput').addEventListener('change', async e=>{
+  const f = e.target.files && e.target.files[0]; if(!f) return;
+  e.target.value='';
+  let imgId=null, fullUrl=null, ocrUrl=null;
+  try{
+    setStatus('处理图片…', .01);
+    const r = await compress(f);
+    fullUrl = r.full;
+    ocrUrl  = r.ocr;
+    const thumb = r.thumb;
+    imgId = uid();
+    const mode = await storeImage(imgId, full, thumb);
+    const d = day(curDay);
+    d.images.push({id:imgId, thumb, ts:Date.now()});
+    save(); render();
+    if(mode==='ls') setStatus('提示：浏览器存储受限，原图已保存为缩略图。');
+  }catch(err){ console.warn(err); toast('图片存档失败（不影响识别）：'+err.message); }
+
+  try{
+    setStatus('检测分栏…', .02);
+    const cols = ocrUrl ? await splitColumns(ocrUrl) : [f];
+    setStatus(cols.length>1 ? ('检测到 '+cols.length+' 栏，分栏识别中…') : '未检测到分栏，整图识别…', .04);
+    const text = await runOCR(cols);
+    showCandidates(parseStructured(text), 'ocr', imgId);
+  }catch(err){
+    console.error(err);
+    $('#ocrStatus').style.color = '#b91c1c';
+    setStatus('识别失败：'+err.message);
+    $('#manualBox').classList.remove('hidden');
+    $('#manualText').focus();
+    toast('自动识别失败，已打开手动输入框');
+  }
+});
+
+// 拖拽
+const drop=$('#drop');
+['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev, e=>{e.preventDefault(); drop.classList.add('over');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev, e=>{e.preventDefault(); drop.classList.remove('over');}));
+drop.addEventListener('drop', e=>{
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if(!f || !f.type.startsWith('image/')) return;
+  try{
+    const dt = new DataTransfer(); dt.items.add(f);
+    $('#fileInput').files = dt.files;
+    $('#fileInput').dispatchEvent(new Event('change'));
+  }catch(err){ toast('请改用"拍照 / 选择图片"按钮选择这张图片'); }
+});
+
+$('#parseManual').addEventListener('click', ()=>{
+  const parsed = parseStructured($('#manualText').value);
+  if(!parsed.tasks.length && !parsed.notes.length){ toast('没解析到内容，请每行写一项'); return; }
+  showCandidates(parsed, 'manual', null);
+});
+
+/* 候选任务 UI */
+let candImg = null;
+function showCandidates(parsed, source, imgId){
+  candImg = imgId;
+  const tasks = parsed.tasks || [], notes = parsed.notes || [];
+  if(!tasks.length && !notes.length){
+    setStatus('没有识别到文字。可以在上面点"手动输入文字"补充。');
+    return;
+  }
+  $('#candCard').classList.remove('hidden');
+  const selCat = c => CATS.map(x=>'<option'+(x===c?' selected':'')+'>'+x+'</option>').join('');
+  const selReq = r => ['必做','选做'].map(x=>'<option'+(x===r?' selected':'')+'>'+x+'</option>').join('');
+  $('#candList').innerHTML =
+    (tasks.length? '<div class="cand-title">任务项（加入后可打卡计时）</div>':'')
+    + tasks.map(it=>
+        '<div class="cand" data-kind="task"><input type="checkbox" class="pick" checked>'
+        +'<input type="text" value="'+esc(it.text)+'">'
+        +'<select class="cat">'+selCat(it.cat)+'</select>'
+        +'<select class="req">'+selReq(it.req)+'</select>'
+        +'<button class="del" title="删除这行">&#10005;</button></div>').join('')
+    + (notes.length? '<div class="cand-title">提醒（不计数、不打卡，只展示）</div>':'')
+    + notes.map(s=>
+        '<div class="cand note-cand" data-kind="note"><input type="checkbox" class="pick" checked>'
+        +'<input type="text" value="'+esc(s)+'">'
+        +'<button class="del" title="删除这行">&#10005;</button></div>').join('');
+  $('#candList').querySelectorAll('.del').forEach(b=>b.addEventListener('click', ()=>b.closest('.cand').remove()));
+  $('#candCard').scrollIntoView({behavior:'smooth', block:'center'});
+}
+$('#addCand').addEventListener('click', ()=>{
+  const rows = $$('#candList .cand').filter(c=>c.querySelector('.pick').checked);
+  const items = rows.filter(c=>c.dataset.kind!=='note').map(c=>({
+    text: c.querySelector('input[type=text]').value.trim(),
+    cat: c.querySelector('select.cat').value,
+    req: c.querySelector('select.req').value
+  })).filter(o=>o.text);
+  const notes = rows.filter(c=>c.dataset.kind==='note')
+    .map(c=>c.querySelector('input[type=text]').value.trim()).filter(Boolean);
+  if(!items.length && !notes.length){ toast('请至少勾选一项'); return; }
+  if(items.length) addTasks(items, 'ocr', candImg);
+  if(notes.length) addNotes(notes);
+  $('#candCard').classList.add('hidden');
+  $('#candList').innerHTML='';
+  setStatus('');
+});
+$('#clearCand').addEventListener('click', ()=>{ $('#candList').innerHTML=''; $('#candCard').classList.add('hidden'); });
+
+/* ====================== 日期 / 其它交互 ====================== */
+$('#prevDay').addEventListener('click', ()=>shiftDay(-1));
+$('#nextDay').addEventListener('click', ()=>shiftDay(1));
+function shiftDay(n){
+  const d = new Date(curDay+'T00:00:00'); d.setDate(d.getDate()+n);
+  curDay = dayKey(d); render();
+}
+$('#datePick').addEventListener('change', e=>{ if(e.target.value){ curDay=e.target.value; render(); } });
+$('#kidName').addEventListener('input', e=>{ state.childName=e.target.value; save(); });
+
+$('#clearDay').addEventListener('click', ()=>{
+  const d = day(curDay);
+  if(!d.tasks.length){ toast('今天没有任务'); return; }
+  if(!confirm('清空 '+curDay+' 的全部 '+d.tasks.length+' 项任务？（原图和提醒会保留）')) return;
+  d.tasks=[]; save(); render(); toast('已清空任务');
+});
+$('#exportDay').addEventListener('click', ()=>exportCSV([curDay]));
+
+$('#gallery').addEventListener('click', async e=>{
+  const img = e.target.closest('img'); if(!img) return;
+  const src = await loadImage(img.dataset.id) || img.src;
+  openModal('<h3>作业原图 <button class="ghost" onclick="closeModal()" style="padding:4px 10px">关闭</button></h3><img src="'+src+'">');
+});
+
+$('#openHistory').addEventListener('click', ()=>{
+  const keys = Object.keys(state.days).filter(k=>state.days[k].tasks.length).sort().reverse();
+  if(!keys.length){ toast('还没有任何记录'); return; }
+  const html = '<h3>历史记录 <button class="ghost" onclick="closeModal()" style="padding:4px 10px">关闭</button></h3>'
+    + '<div class="row" style="margin-bottom:10px"><button class="btn ok" onclick="exportAll()">导出全部 CSV</button></div>'
+    + keys.map(k=>{
+        const d=state.days[k], done=d.tasks.filter(t=>taskState(t)==='done').length;
+        const sumMs = d.tasks.reduce((a,t)=>a+(taskDur(t)||0),0);
+        const noteHtml = (d.notes||[]).length
+          ? '<div style="margin-top:8px;color:#b45309"><b>提醒</b><ul>'
+            + d.notes.map(n=>'<li>'+esc(n.text)+'</li>').join('') + '</ul></div>'
+          : '';
+        const body = CATS.map(c=>{
+          const list = d.tasks.filter(t=>(t.cat||'其他')===c); if(!list.length) return '';
+          return '<div style="margin-top:8px"><b>'+c+'</b>'
+            + '<ul>'+list.map(t=>{
+                const st = taskState(t), dur = taskDur(t);
+                return '<li>'+(st==='done'?'<span style="color:#16a34a">已完成</span>'
+                        :st==='running'?'<span style="color:#b45309">进行中</span>'
+                        :'<span style="color:#9ca3af">未开始</span>')
+                  +' <span style="color:#b91c1c">['+esc(t.req||'必做')+']</span>'
+                  +' · '+esc(t.text)
+                  +(t.startAt?' · 开始 '+fmtHM(t.startAt):'')
+                  +(t.doneAt?' · 完成 '+fmtHM(t.doneAt):'')
+                  +(dur!=null?' · 用时 '+fmtDur(dur):'')
+                  +'</li>';
+              }).join('')+'</ul></div>';
+        }).join('');
+        return '<div class="hday"><div class="h" onclick="this.parentNode.classList.toggle(\'open\')">'
+          + '<span class="n">'+k+(k===todayKey()?'（今天）':'')+'</span>'
+          + '<span>'+done+'/'+d.tasks.length+(sumMs?' · 用时 '+fmtDur(sumMs):'')+'</span></div>'
+          + '<div class="d">'+body+noteHtml+'</div></div>';
+      }).join('');
+  openModal(html);
+});
+function openModal(html){ $('#modalBox').innerHTML=html; $('#modal').classList.remove('hidden'); }
+window.closeModal = ()=> $('#modal').classList.add('hidden');
+$('#modal').addEventListener('click', e=>{ if(e.target.id==='modal') closeModal(); });
+window.exportAll = ()=> exportCSV(Object.keys(state.days).filter(k=>state.days[k].tasks.length).sort());
+
+/* ====================== 导出 CSV ====================== */
+function exportCSV(dayKeys){
+  const rows = [['日期','小朋友','科目','必做/选做','任务','状态','开始时间','完成时间','用时(分钟)','截止','加入时间','来源']];
+  const ST = {idle:'待开始', running:'进行中', done:'已完成'};
+  dayKeys.forEach(k=>{
+    (state.days[k].notes||[]).forEach(n=>{
+      rows.push([k, state.childName||'', '', '', n.text, '提醒', '', '', '', '', fmtTime(n.ts), '扫描']);
+    });
+    state.days[k].tasks.forEach(t=>{
+      const dur = taskDur(t);
+      rows.push([k, state.childName||'', t.cat||'其他', t.req||'必做', t.text, ST[taskState(t)],
+        t.startAt? fmtTime(t.startAt):'', t.doneAt? fmtTime(t.doneAt):'',
+        dur!=null? Math.max(0,Math.round(dur/60000)):'',
+        t.due||'', fmtTime(t.createdAt), t.source==='ocr'?'扫描':'手动']);
+    });
+  });
+  const csv = rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\r\n');
+  const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '作业记录_'+dayKeys[0]+(dayKeys.length>1?('_至_'+dayKeys[dayKeys.length-1]):'')+'.csv';
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},1000);
+  toast('已导出 '+dayKeys.length+' 天的记录');
+}
+
+/* ====================== 启动 ====================== */
+// 注册离线缓存（https / localhost 下生效，局域网 http 会自动跳过）
+if('serviceWorker' in navigator && location.protocol !== 'file:'){
+  addEventListener('load', ()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); });
+}
+render();
+if(location.protocol === 'file:'){
+  $('#ocrStatus').innerHTML = '注意：当前是双击本地文件打开的（地址以 file:// 开头），浏览器禁止加载识别引擎，扫描会卡住。<br>'
+    + '请双击「启动（手机也能用）.bat」，用 http://localhost:8000/index.html 打开；手机用同一个 WiFi 下的 IP 地址打开。<br>'
+    + '只用「手动输入文字」则不受影响。';
+  $('#ocrStatus').style.color = '#b91c1c';
+}else{
+  setStatus('提示：首次使用扫描会自动下载中文识别库（约 10~20MB），之后同浏览器可离线使用。');
+}
+</script>
+</body>
+</html>
