@@ -134,6 +134,10 @@ select.cat{border:1px solid var(--line);border-radius:8px;padding:2px 6px;font-s
 .pill.run{background:#fef3c7;color:#b45309}
 .pill.due{background:#dbeafe;color:#1d4ed8}
 select.req{border:1px solid #fca5a5;border-radius:8px;padding:2px 6px;font-size:12px;font-family:inherit;background:#fff5f5;color:#b91c1c}
+.addrow{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 4px}
+.addrow input[type=text]{flex:1 1 170px;min-width:0;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:14px;font-family:inherit}
+.addrow select{border:1px solid var(--line);border-radius:10px;padding:8px 6px;font-size:13px;font-family:inherit;background:#fff;color:var(--muted)}
+.tick.run{background:#fef3c7;border-color:#f59e0b;color:#b45309;font-size:12px}
 /* 提醒区 */
 .notes{background:#fffbeb;border:1px solid #fde68a;border-radius:14px;padding:10px 12px;margin-bottom:12px}
 .notes .ntitle{font-size:12px;font-weight:700;color:#b45309;margin-bottom:4px}
@@ -203,10 +207,12 @@ select.req{border:1px solid #fca5a5;border-radius:8px;padding:2px 6px;font-size:
   <div id="drop" class="drop">
     <p>把老师发的作业拍照 / 截图，或用文字粘贴进来</p>
     <div class="row" style="justify-content:center">
-      <button class="btn" id="pickImg">拍照 / 选择图片</button>
+      <button class="btn" id="pickImg">拍照</button>
+      <button class="btn ghost" id="pickAlbum">从相册选</button>
       <button class="btn ghost" id="toggleManual">手动输入文字</button>
     </div>
     <input type="file" id="fileInput" accept="image/*" capture="environment" class="hidden">
+    <input type="file" id="albumInput" accept="image/*" class="hidden">
     <div class="progress hidden" id="progWrap"><i id="progBar"></i></div>
     <div class="status" id="ocrStatus"></div>
   </div>
@@ -232,13 +238,19 @@ select.req{border:1px solid #fca5a5;border-radius:8px;padding:2px 6px;font-size:
   <h2>3 · 今日任务清单 <span class="tag" id="taskDate"></span></h2>
   <div class="stats">
     <div class="stat"><b id="sDone">0/0</b><span>已完成</span></div>
-    <div class="stat"><b id="sTime">0分</b><span>今日用时</span></div>
+    <div class="stat"><b id="sTime">0分</b><span>学习总时长</span></div>
     <div class="stat"><b id="sStar">0</b><span>今日星星</span></div>
     <div class="stat"><b id="sStreak">0</b><span>连续全完成</span></div>
   </div>
   <div class="progress"><i id="mainBar" style="width:0%"></i></div>
   <div class="banner" id="banner"></div>
   <div id="noteBox"></div>
+  <div class="addrow">
+    <input type="text" id="newTaskText" placeholder="手动加一项，例如：口算 20 题">
+    <select id="newTaskCat"><option value="">科目自动</option></select>
+    <select id="newTaskReq"><option>必做</option><option>选做</option></select>
+    <button class="btn ok" id="addTaskBtn">添加</button>
+  </div>
   <div id="taskList" style="margin-top:12px"></div>
   <div class="row" style="margin-top:12px">
     <button class="btn ghost" id="exportDay">导出今天 CSV</button>
@@ -280,6 +292,16 @@ function taskDur(t){
   if(t.startAt && t.doneAt) return t.doneAt - t.startAt;
   if(t.doneAt) return t.doneAt - t.createdAt;
   return null;
+}
+/* 学习总时长 = 当天最早一个「开始」→ 最晚一个「完成」（包含中间的休息）
+   还有任务在进行中时，结束点按当前时间实时计算 */
+function spanMs(list){
+  const started = list.filter(t=>t.startAt).map(t=>t.startAt);
+  if(!started.length) return 0;
+  const finished = list.filter(t=>t.doneAt).map(t=>t.doneAt);
+  const from = Math.min.apply(null, started);
+  const to = finished.length ? Math.max.apply(null, finished) : Date.now();
+  return Math.max(0, to - from);
 }
 function taskState(t){
   if(t.doneAt) return 'done';
@@ -411,8 +433,10 @@ function compress(file, maxSide=1280, q=.72){
       const img = new Image();
       img.onload = ()=>{
         const base = Math.max(img.width, img.height);
-        // OCR 专用：放大到最多 1800px（不长边超过 2 倍），灰度 + 对比度
-        const so = Math.min(2, 1800/base);
+        // OCR 专用：灰度 + 对比度；手机端限制尺寸，避免内存不足
+        const isMobile = /iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent)
+          || Math.min(window.innerWidth, window.innerHeight) < 500;
+        const so = Math.min(isMobile ? 1.6 : 2, (isMobile ? 1200 : 1800)/base);
         const ow = Math.round(img.width*so), oh = Math.round(img.height*so);
         const oc = document.createElement('canvas'); oc.width=ow; oc.height=oh;
         const octx = oc.getContext('2d'); octx.drawImage(img,0,0,ow,oh);
@@ -510,31 +534,6 @@ function isPureDate(s){
     .replace(/[\s,，、:：\-—·.。]/g,'');
   return rest.length < 2;
 }
-/* 括号内容单独成一条：
-   "习作《续写故事》（10月13日晚11点前…上交习作指导单。）" → 两条
-   "预习：（L12）" → 合成 "预习：L12"；"抄写（3遍）" 这种数量词不拆 */
-function splitByParen(s){
-  const out=[], re=/[（(]([^（）()]+)[）)]/g;
-  let last=0, m, hit=false;
-  const isReq = x => /^(必做|选做|选作|拓展|提高|挑战)$/.test(x);
-  const pushInner = inner => { if(inner.length>=2 && !isReq(inner)) out.push(inner); };
-  while((m=re.exec(s))){
-    hit = true;
-    const before = s.slice(last, m.index).trim().replace(/[:：]\s*$/, ':');
-    const inner = m[1].trim();
-    if(before.length>=2){
-      if(/[:：]$/.test(before)){ if(inner) out.push(before + inner); }        // 标签+括号 → 合成一条
-      else if(/^[\d一二三四五六七八九十]+\s*(遍|次|页|题|个|行|分钟)$/.test(inner)){ out.push(before + '（' + inner + '）'); }   // 数量词不拆
-      else if(/^(第[\d一二三四五六七八九十]+[课页单元篇题]|P?\d+\s*[-~]\s*\d+|[Pp]\d+)$/.test(inner)){ out.push(before + '（' + inner + '）'); }  // 定位词不拆
-      else { out.push(before); pushInner(inner); }
-    }else pushInner(inner);
-    last = m.index + m[0].length;
-  }
-  const after = s.slice(last).trim();
-  if(after.length>=2) out.push(after);
-  if(!hit) return [s];
-  return out.filter(x=>x && x.length>=2);
-}
 /* 同一行里挤了多道题："1.抄写 2.背诵" → 拆成两项 */
 function splitMulti(s){
   const a = s.split(/\s+(?=\d{1,2}\s*[.、,，)）])/).map(x=>x.trim()).filter(Boolean);
@@ -582,28 +581,26 @@ function parseStructured(text){
     // 提醒区块：直到下一个科目/必做之前，都算提醒
     if(noteMode){
       const one = s.replace(/^(提醒|注意|温馨提示|家长|备注)\s*[:：]?\s*/,'').replace(/^[:：]\s*/,'');
-      splitByParen(one).forEach(x=>{
-        if(x && x.length>=2 && !isPureDate(x) && !/^[^一-鿿]{0,12}$/.test(x) && !seenN.has(x)){ seenN.add(x); notes.push(x); }
-      });
+      if(one && one.length>=2 && !isPureDate(one) && !/^[^一-鿿]{0,12}$/.test(one) && !seenN.has(one)){
+        seenN.add(one); notes.push(one);
+      }
       continue;
     }
 
     // 单行提醒（"提醒：xxx" / "明天带…"）
     if(/^(提醒|注意|温馨提示|家长|备注|准备|明日|明天|今天|请|需要|记得|带|交|穿)/.test(s) && s.length<=60){
       const one = s.replace(/^(提醒|注意|温馨提示|家长|备注)\s*[:：]?\s*/,'').replace(/^[:：]\s*/,'');
-      splitByParen(one).forEach(x=>{ if(x && !seenN.has(x)){ seenN.add(x); notes.push(x); } });
+      if(one && !seenN.has(one)){ seenN.add(one); notes.push(one); }
       continue;
     }
 
-    // 括号内容独立成条，一行多题也拆开
+    // 括号不再单独成条（整句保持一条）；一行多题仍会拆开
     splitMulti(s).forEach(part=>{
-      splitByParen(part).forEach(piece=>{
-        const one = stripBullet(piece);
-        if(!one || one.length<2) return;
-        if(isPureDate(one)) return;              // 纯日期/时间/标题行：丢弃
-        if(seen.has(one)) return; seen.add(one);
-        tasks.push({text:one, cat, req, due: extractDue(one)});
-      });
+      const one = stripBullet(part);
+      if(!one || one.length<2) return;
+      if(isPureDate(one)) return;              // 纯日期/时间/标题行：丢弃
+      if(seen.has(one)) return; seen.add(one);
+      tasks.push({text:one, cat, req, due: extractDue(one)});
     });
   }
   return {tasks, notes};
@@ -617,7 +614,8 @@ function taskHTML(t){
     : '<button class="btn-sm" data-act="redo">撤销</button>';
   const statePill = {idle:'待开始', running:'进行中', done:'已完成'}[st];
   return '<div class="task'+(st==='done'?' done':'')+'" data-id="'+t.id+'">'
-    + '<div class="tick" data-act="toggle">'+(st==='done'?'&#10003;':'')+'</div>'
+    + '<div class="tick'+(st==='running'?' run':'')+'">'
+    +   (st==='done' ? '&#10003;' : (st==='running' ? '&#9654;' : '')) + '</div>'
     + '<div class="tbody">'
     +   '<div class="ttext" data-act="edit" title="点击可修改">'+esc(t.text)+'</div>'
     +   '<div class="tmeta">'
@@ -647,7 +645,7 @@ function render(){
   $('#kidName').value = state.childName || '';
 
   const total = d.tasks.length, done = d.tasks.filter(t=>taskState(t)==='done').length;
-  const sumMs = d.tasks.reduce((a,t)=>a + (taskDur(t)||0), 0);
+  const sumMs = spanMs(d.tasks);
   $('#sDone').textContent = done+'/'+total;
   $('#sTime').textContent = sumMs? fmtDur(sumMs) : '0分';
   $('#sStar').textContent = done;
@@ -656,7 +654,7 @@ function render(){
 
   const banner = $('#banner');
   if(total>0 && done===total){
-    banner.textContent = '全部完成！共 '+total+' 项，实际用时 '+fmtDur(sumMs)+'，太棒了！';
+    banner.textContent = '全部完成！共 '+total+' 项，学习总时长 '+fmtDur(sumMs)+'，太棒了！';
     banner.classList.add('show');
   }else banner.classList.remove('show');
 
@@ -687,7 +685,7 @@ function render(){
         + '<span>必做 '+md+'/'+must.length+'</span>'
         + (opt.length? '<span>选做 '+opt.filter(t=>taskState(t)==='done').length+'/'+opt.length+'</span>':'')
         + '<span class="gline"></span>'
-        + '<span>'+fmtDur(list.reduce((a,t)=>a+(taskDur(t)||0),0))+'</span></h3>'
+        + '<span>'+fmtDur(spanMs(list))+'</span></h3>'
         + list.map(taskHTML).join('') + '</div>';
     }).join('');
   }
@@ -750,7 +748,8 @@ $('#taskList').addEventListener('click', e=>{
     toast('开始做「'+t.text+'」，计时中…');
   }
   else if(act==='finish'){
-    t.doneAt = Date.now(); if(!t.startAt) t.startAt = t.createdAt; t.done=true; save();
+    if(!t.startAt){ toast('请先点「开始」，完成时才会计时'); return; }
+    t.doneAt = Date.now(); t.done=true; save();
     const used = fmtDur(t.doneAt - t.startAt);
     celebrate(el); render();
     toast('「'+t.text+'」完成！用时 '+used);
@@ -765,13 +764,8 @@ $('#taskList').addEventListener('click', e=>{
     t.done=false; t.doneAt=null; t.startAt=null; save(); render();
   }
   else if(act==='toggle'){
-    if(taskState(t)==='done'){
-      if(!confirm('取消「'+t.text+'」的完成状态？完成时间会被清除。')) return;
-      t.done=false; t.doneAt=null; t.startAt=null; save(); render(); return;
-    }
-    t.done=true; t.doneAt=Date.now(); if(!t.startAt) t.startAt=t.createdAt; save();
-    celebrate(el); render();
-    if(d.tasks.every(x=>taskState(x)==='done')) bigWin(d);
+    // 圆圈不再可勾选：未完成的任务需先点「开始」
+    if(taskState(t)!=='running') toast('先点「开始」，做完再点「完成」，这样才会记录用时');
   }
   else if(act==='edit'){
     const span = el;
@@ -808,7 +802,7 @@ $('#noteBox').addEventListener('click', e=>{
   save(); render();
 });
 
-/* 进行中的任务：每秒刷新"已进行"计时 */
+/* 进行中的任务：每秒刷新"已进行"计时，并实时更新学习总时长 */
 setInterval(()=>{
   const d = state.days[curDay]; if(!d) return;
   let running = false;
@@ -819,7 +813,10 @@ setInterval(()=>{
       if(el) el.textContent = '已进行 ' + fmtDur(Date.now() - t.startAt, true);
     }
   });
-  if(running && !document.hidden) { /* 计时持续刷新 */ }
+  if(running && !document.hidden){
+    const el = document.getElementById('sTime');
+    if(el) el.textContent = fmtDur(spanMs(d.tasks));
+  }
 }, 1000);
 
 /* ====================== 勾选后的表现 ====================== */
@@ -840,8 +837,8 @@ function bigWin(d){
   playTone([659,784,988,1319], .14);
   setTimeout(()=>confetti(innerWidth/2, innerHeight*0.45, 120), 350);
   if(navigator.vibrate) navigator.vibrate([60,60,60]);
-  const span = fmtDur(d.tasks.reduce((a,t)=>a+(taskDur(t)||0),0));
-  toast('全部完成！共 '+d.tasks.length+' 项，实际用时 '+span+'，今天非常棒！');
+  const span = fmtDur(spanMs(d.tasks));
+  toast('全部完成！共 '+d.tasks.length+' 项，学习总时长 '+span+'，今天非常棒！');
 }
 
 function playTone(freqs, dur){
@@ -897,10 +894,17 @@ const CDN = [
   'https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js'
 ];
-const LANG_PATHS = [
-  'https://tessdata.projectnaptha.com/4.0.0',
-  'https://tessdata.projectnaptha.com/4.0.0_fast'
-];
+/* 识别库来源，按顺序尝试：
+   1) GH_LANG：你自己的 GitHub 仓库 + jsDelivr 加速（最快，国内秒开）
+   2) 官方 fast 版（体积小）
+   3) 官方标准版
+   把 GH_LANG 填成 https://cdn.jsdelivr.net/gh/<用户名>/<仓库名>@main/tessdata 即可 */
+const GH_LANG = '';
+const LANG_SOURCES = [
+  {path: GH_LANG, gzip:false},
+  {path:'https://tessdata.projectnaptha.com/4.0.0_fast', gzip:true},
+  {path:'https://tessdata.projectnaptha.com/4.0.0', gzip:true}
+].filter(s=>s.path);
 function loadScript(src){
   return new Promise((res,rej)=>{
     const s=document.createElement('script'); s.src=src; s.async=true;
@@ -986,19 +990,22 @@ function splitColumns(dataUrl){
 async function runOCR(images){
   await ensureTesseract();
   let lastErr;
-  for(let i=0;i<LANG_PATHS.length;i++){
+  for(let i=0;i<LANG_SOURCES.length;i++){
     let worker=null;
+    const t0 = Date.now();
+    const waited = ()=> Math.round((Date.now()-t0)/1000);
     try{
-      setStatus((i? '换个资源重试：':'')+'正在准备中英文识别库（首次约 20MB，请稍候）…', .02);
+      setStatus((i? '换备用下载源重试（第 '+(i+1)+' 个）：':'')+'正在准备中英文识别库…', .02);
       worker = await withTimeout(Tesseract.createWorker('chi_sim+eng', 1, {
-        langPath: LANG_PATHS[i],
+        langPath: LANG_SOURCES[i].path,
+        gzip: LANG_SOURCES[i].gzip,
         logger: m=>{
-          if(m.status==='loading tesseract core') setStatus('加载核心…',.1);
-          else if(m.status==='initializing tesseract') setStatus('初始化引擎…',.2);
-          else if(m.status==='loading language traineddata') setStatus('下载中英文识别库… '+Math.round((m.progress||0)*100)+'%', .2+(m.progress||0)*.5);
-          else if(m.status==='initializing api') setStatus('初始化接口…',.75);
+          if(m.status==='loading tesseract core') setStatus('加载识别核心…（已等待 '+waited()+'s）',.1);
+          else if(m.status==='initializing tesseract') setStatus('初始化引擎…（已等待 '+waited()+'s）',.2);
+          else if(m.status==='loading language traineddata') setStatus('下载识别库 '+Math.round((m.progress||0)*100)+'%（已等待 '+waited()+'s）', .2+(m.progress||0)*.5);
+          else if(m.status==='initializing api') setStatus('初始化接口…（已等待 '+waited()+'s）',.75);
         }
-      }), 60000, '引擎初始化超时（60s）。若用 file:// 打开请改用本地服务地址，或直接用"手动输入文字"');
+      }), 180000, '识别库下载或引擎初始化超时');
       const texts=[];
       for(let k=0;k<images.length;k++){
         setStatus(images.length>1
@@ -1011,6 +1018,7 @@ async function runOCR(images){
       setStatus('识别完成', 1);
       return texts.join('\n');
     }catch(e){
+      if(/超时/.test(e.message||'')) e.message += '（已等待 '+waited()+' 秒）';
       lastErr = e;
       try{ if(worker) await worker.terminate(); }catch(_){}
     }
@@ -1020,27 +1028,29 @@ async function runOCR(images){
 
 /* ====================== 扫描交互 ====================== */
 $('#pickImg').addEventListener('click', ()=>$('#fileInput').click());
+$('#pickAlbum').addEventListener('click', ()=>$('#albumInput').click());
+let lastImageFile = null;
 $('#toggleManual').addEventListener('click', ()=>{
   const b=$('#manualBox'); b.classList.toggle('hidden');
   if(!b.classList.contains('hidden')) $('#manualText').focus();
 });
-$('#fileInput').addEventListener('change', async e=>{
-  const f = e.target.files && e.target.files[0]; if(!f) return;
-  e.target.value='';
-  let imgId=null, fullUrl=null, ocrUrl=null;
+async function processImage(f){
+  lastImageFile = f;
+  let imgId=null, ocrUrl=null;
   try{
     setStatus('处理图片…', .01);
     const r = await compress(f);
-    fullUrl = r.full;
-    ocrUrl  = r.ocr;
-    const thumb = r.thumb;
+    ocrUrl = r.ocr;
     imgId = uid();
-    const mode = await storeImage(imgId, full, thumb);
+    const mode = await storeImage(imgId, r.full, r.thumb);
     const d = day(curDay);
-    d.images.push({id:imgId, thumb, ts:Date.now()});
+    d.images.push({id:imgId, thumb:r.thumb, ts:Date.now()});
     save(); render();
     if(mode==='ls') setStatus('提示：浏览器存储受限，原图已保存为缩略图。');
-  }catch(err){ console.warn(err); toast('图片存档失败（不影响识别）：'+err.message); }
+  }catch(err){
+    console.warn(err);
+    toast('图片读取失败：'+err.message+'（若是 iPhone 的 HEIC 照片，请用 Safari 打开本页）');
+  }
 
   try{
     setStatus('检测分栏…', .02);
@@ -1050,12 +1060,22 @@ $('#fileInput').addEventListener('change', async e=>{
     showCandidates(parseStructured(text), 'ocr', imgId);
   }catch(err){
     console.error(err);
-    $('#ocrStatus').style.color = '#b91c1c';
-    setStatus('识别失败：'+err.message);
+    const box = $('#ocrStatus');
+    box.style.color = '#b91c1c';
+    box.innerHTML = '识别失败：'+esc(err.message)
+      + (lastImageFile? ' <button class="btn-sm" id="retryOcr">重试识别</button>' : '')
+      + '<br>也可以点「手动输入文字」直接粘贴作业内容';
+    const rb = document.getElementById('retryOcr');
+    if(rb) rb.addEventListener('click', ()=>{ box.style.color=''; processImage(lastImageFile); });
     $('#manualBox').classList.remove('hidden');
-    $('#manualText').focus();
-    toast('自动识别失败，已打开手动输入框');
+    toast('自动识别失败，可重试或用手动输入');
   }
+}
+$('#fileInput').addEventListener('change', e=>{
+  const f = e.target.files && e.target.files[0]; e.target.value=''; if(f) processImage(f);
+});
+$('#albumInput').addEventListener('change', e=>{
+  const f = e.target.files && e.target.files[0]; e.target.value=''; if(f) processImage(f);
 });
 
 // 拖拽
@@ -1134,6 +1154,19 @@ function shiftDay(n){
 $('#datePick').addEventListener('change', e=>{ if(e.target.value){ curDay=e.target.value; render(); } });
 $('#kidName').addEventListener('input', e=>{ state.childName=e.target.value; save(); });
 
+/* 手动添加一项（妈妈牌作业） */
+$('#newTaskCat').innerHTML = '<option value="">科目自动</option>'
+  + CATS.map(c=>'<option>'+c+'</option>').join('');
+function addManualTask(){
+  const text = $('#newTaskText').value.trim();
+  if(!text){ toast('先写上要做什么'); $('#newTaskText').focus(); return; }
+  addTasks([{text, cat: $('#newTaskCat').value || guessCategory(text), req: $('#newTaskReq').value || '必做'}], 'manual', null);
+  $('#newTaskText').value = '';
+  $('#newTaskText').focus();
+}
+$('#addTaskBtn').addEventListener('click', addManualTask);
+$('#newTaskText').addEventListener('keydown', e=>{ if(e.key === 'Enter') addManualTask(); });
+
 $('#clearDay').addEventListener('click', ()=>{
   const d = day(curDay);
   if(!d.tasks.length){ toast('今天没有任务'); return; }
@@ -1155,7 +1188,7 @@ $('#openHistory').addEventListener('click', ()=>{
     + '<div class="row" style="margin-bottom:10px"><button class="btn ok" onclick="exportAll()">导出全部 CSV</button></div>'
     + keys.map(k=>{
         const d=state.days[k], done=d.tasks.filter(t=>taskState(t)==='done').length;
-        const sumMs = d.tasks.reduce((a,t)=>a+(taskDur(t)||0),0);
+        const sumMs = spanMs(d.tasks);
         const noteHtml = (d.notes||[]).length
           ? '<div style="margin-top:8px;color:#b45309"><b>提醒</b><ul>'
             + d.notes.map(n=>'<li>'+esc(n.text)+'</li>').join('') + '</ul></div>'
@@ -1178,7 +1211,7 @@ $('#openHistory').addEventListener('click', ()=>{
         }).join('');
         return '<div class="hday"><div class="h" onclick="this.parentNode.classList.toggle(\'open\')">'
           + '<span class="n">'+k+(k===todayKey()?'（今天）':'')+'</span>'
-          + '<span>'+done+'/'+d.tasks.length+(sumMs?' · 用时 '+fmtDur(sumMs):'')+'</span></div>'
+          + '<span>'+done+'/'+d.tasks.length+(sumMs?' · 总时长 '+fmtDur(sumMs):'')+'</span></div>'
           + '<div class="d">'+body+noteHtml+'</div></div>';
       }).join('');
   openModal(html);
@@ -1190,18 +1223,20 @@ window.exportAll = ()=> exportCSV(Object.keys(state.days).filter(k=>state.days[k
 
 /* ====================== 导出 CSV ====================== */
 function exportCSV(dayKeys){
-  const rows = [['日期','小朋友','科目','必做/选做','任务','状态','开始时间','完成时间','用时(分钟)','截止','加入时间','来源']];
+  const rows = [['日期','小朋友','科目','必做/选做','任务','状态','开始时间','完成时间','单项用时(分钟)','当日学习总时长(分钟)','截止','加入时间','来源']];
   const ST = {idle:'待开始', running:'进行中', done:'已完成'};
   dayKeys.forEach(k=>{
+    const daySpan = spanMs(state.days[k].tasks);
+    const daySpanMin = daySpan? Math.round(daySpan/60000) : '';
     (state.days[k].notes||[]).forEach(n=>{
-      rows.push([k, state.childName||'', '', '', n.text, '提醒', '', '', '', '', fmtTime(n.ts), '扫描']);
+      rows.push([k, state.childName||'', '', '', n.text, '提醒', '', '', '', daySpanMin, '', fmtTime(n.ts), '扫描']);
     });
     state.days[k].tasks.forEach(t=>{
       const dur = taskDur(t);
       rows.push([k, state.childName||'', t.cat||'其他', t.req||'必做', t.text, ST[taskState(t)],
         t.startAt? fmtTime(t.startAt):'', t.doneAt? fmtTime(t.doneAt):'',
         dur!=null? Math.max(0,Math.round(dur/60000)):'',
-        t.due||'', fmtTime(t.createdAt), t.source==='ocr'?'扫描':'手动']);
+        daySpanMin, t.due||'', fmtTime(t.createdAt), t.source==='ocr'?'扫描':'手动']);
     });
   });
   const csv = rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\r\n');
