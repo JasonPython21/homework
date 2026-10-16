@@ -130,6 +130,7 @@ textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:10px
 .badge.语文{background:#fee2e2;color:#b91c1c}
 .badge.数学{background:#dbeafe;color:#1d4ed8}
 .badge.英语{background:#fef3c7;color:#b45309}
+.badge.探究{background:#d1fae5;color:#047857}
 .badge.其他{background:#e5e7eb;color:#4b5563}
 select.cat{border:1px solid var(--line);border-radius:8px;padding:2px 6px;font-size:12px;font-family:inherit;background:#fff;color:var(--muted)}
 .timer{font-weight:700;color:var(--warn)}
@@ -332,10 +333,11 @@ function taskState(t){
   if(t.startAt) return 'running';
   return 'idle';
 }
-const CATS = ['语文','数学','英语','其他'];
+const CATS = ['语文','数学','英语','探究','其他'];
 function guessCategory(text){
   const s = String(text||'');
   if(/英语|英文|单词|音标|ABC|English/i.test(s)) return '英语';
+  if(/探究|Inquiry/i.test(s)) return '探究';
   if(/语文|生字|课文|抄写|背诵|作文|日记|古诗|阅读理解|拼音|听写|汉字|朗读|组词/.test(s)) return '语文';
   if(/数学|口算|竖式|应用题|算术|计算|思维题|奥数|换算|几何|图形|乘法|除法/.test(s)) return '数学';
   return '其他';
@@ -494,8 +496,8 @@ function compress(file, maxSide=1280, q=.72){
         纯日期/时间行（10月14日、星期四、18:30）→ 丢弃，不生成任务；
         正文里带的时间（17:30前）→ 提取为"截止"，不污染任务名。
 =================================================================== */
-const SUBJECTS = {'语文':'语文','数学':'数学','英语':'英语','英文':'英语','外语':'英语','探究':'其他','科学':'其他','道法':'其他','体育':'其他','美术':'其他','音乐':'其他','其它':'其他','其他':'其他'};
-const EN_SUBJECTS = {chinese:'语文',math:'数学',maths:'数学',english:'英语',inquiry:'其他',science:'其他'};
+const SUBJECTS = {'语文':'语文','数学':'数学','英语':'英语','英文':'英语','外语':'英语','探究':'探究','科学':'其他','道法':'其他','体育':'其他','美术':'其他','音乐':'其他','其它':'其他','其他':'其他'};
+const EN_SUBJECTS = {chinese:'语文',math:'数学',maths:'数学',english:'英语',inquiry:'探究',science:'其他'};
 function normCat(name){
   if(!name) return '其他';
   const k = String(name).trim().toLowerCase();
@@ -1072,20 +1074,32 @@ async function runOCR(images){
 }
 
 /* ====================== AI 识别（可选，准确率远高于本地 OCR） ====================== */
+/* 说明：实测腾讯云（hunyuan.cloud / lkeap / tokenhub）均不允许浏览器跨域直连，
+   纯前端只能用开放 CORS 的服务；若坚持用腾讯云，请在「自定义」里填自己的中转地址 */
 const AI_PRESETS = {
-  hunyuan: {name:'腾讯混元（hunyuan-vision）', base:'https://api.hunyuan.cloud.tencent.com/v1/chat/completions', model:'hunyuan-vision',
-    tip:'腾讯云控制台 → 搜索「TokenHub」或「混元」→ 左侧 API Key 管理 → 新建密钥，复制 sk- 开头的那串。'},
-  silicon:{name:'硅基流动（开源视觉模型）', base:'https://api.siliconflow.cn/v1/chat/completions', model:'Qwen/Qwen2.5-VL-32B-Instruct',
-    tip:'siliconflow.cn 注册 → 左侧「API 密钥」→ 复制。视觉模型稳定，注册送免费额度。'},
+  silicon:{name:'硅基流动 Qwen2.5-VL（推荐·浏览器可直连）', base:'https://api.siliconflow.cn/v1/chat/completions', model:'Qwen/Qwen2.5-VL-32B-Instruct',
+    tip:'cloud.siliconflow.cn 注册 → 左侧「API 密钥」→ 新建并复制。视觉模型稳定，注册送免费额度。'},
+  hunyuan:{name:'腾讯混元（需自备中转地址）', base:'https://api.hunyuan.cloud.tencent.com/v1/chat/completions', model:'hunyuan-vision',
+    tip:'腾讯云接口不允许浏览器直连，直接填会报跨域错误。需先搭一个中转（如 EdgeOne 边缘函数），再把中转地址填到这里。'},
   ark:   {name:'火山方舟（豆包）', base:'https://ark.cn-beijing.volces.com/api/v3/chat/completions', model:'doubao-1.5-vision-pro',
     tip:'火山方舟控制台创建推理接入点后复制 API Key。'},
   custom:{name:'自定义（OpenAI 兼容）', base:'', model:'', tip:'填任意 OpenAI 兼容的 /chat/completions 地址和模型名。'}
 };
 const AI_PROMPT = '你是作业清单整理助手。请阅读图片中的作业内容，只输出 JSON，不要解释、不要代码块：\n'
-  + '{"tasks":[{"subject":"语文|数学|英语|其他","required":"必做|选做","text":"作业内容"}],"notes":["提醒内容"]}\n'
+  + '{"tasks":[{"subject":"语文|数学|英语|探究|其他","required":"必做|选做","text":"作业内容"}],"notes":["提醒内容"]}\n'
   + '规则：1) 每一项可完成的作业一条，保留原文语言（中英文都保留）；2) 括号内容不要单独拆成一条；\n'
-  + '3) subject 只能取 语文/数学/英语/其他，其它科目（科学、探究等）归"其他"；\n'
+  + '3) subject 只能取这五类：语文、数学、英语、探究、其他。原文写 English 的归"英语"，写 Inquiry / 探究 的归"探究"，\n'
+  + '   Science、 humanities、体育、美术等其它科目归"其他"；\n'
   + '4) required 按原文"必做/选做"标注，没有标注默认"必做"；5) 提醒、通知、要带的东西、家长签字放 notes，不要放进 tasks。';
+const AI_SUBJECT = {'语文':'语文','chinese':'语文','数学':'数学','math':'数学','maths':'数学',
+  '英语':'英语','english':'英语','英文':'英语','外语':'英语','探究':'探究','inquiry':'探究',
+  '其他':'其他','other':'其他'};
+function aiSubject(sub, text){
+  const key = String(sub||'').trim().toLowerCase();
+  if(AI_SUBJECT[key]) return AI_SUBJECT[key];
+  if(CATS.indexOf(sub)>=0) return sub;
+  return guessCategory(String(sub||'') + ' ' + String(text||''));
+}
 function parseAiJson(txt){
   let s = String(txt||'').trim().replace(/^```(?:json)?/i,'').replace(/```$/,'').trim();
   const a = s.indexOf('{'), b = s.lastIndexOf('}');
@@ -1096,7 +1110,7 @@ function parseAiJson(txt){
     const sub  = String(x.subject||'');
     return {
       text,
-      cat: CATS.indexOf(sub)>=0 ? sub : guessCategory(sub + ' ' + text),
+      cat: aiSubject(sub, text),
       req: /选做|选作|optional/i.test(String(x.required||'')) ? '选做' : '必做',
       due: extractDue(text)
     };
@@ -1161,7 +1175,7 @@ $('#toggleAi').addEventListener('click', ()=>{
   const b = $('#aiBox');
   b.classList.toggle('hidden');
   if(!b.classList.contains('hidden')){
-    const p = (state.aiCfg && state.aiCfg.provider) || 'hunyuan';
+    const p = (state.aiCfg && state.aiCfg.provider) || 'silicon';
     $('#aiProvider').value = p; fillAi(p);
     if(state.aiCfg){ $('#aiBase').value = state.aiCfg.base||''; $('#aiModel').value = state.aiCfg.model||''; }
   }
