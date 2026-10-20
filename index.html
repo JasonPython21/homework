@@ -209,6 +209,7 @@ select.req{border:1px solid #fca5a5;border-radius:8px;padding:2px 6px;font-size:
       <button id="nextDay" class="ghost">后一天 ›</button>
     </div>
     <span id="todayChip" class="today-chip"></span>
+    <span id="syncChip" class="today-chip hidden"></span>
   </div>
 
   <div id="drop" class="drop">
@@ -235,6 +236,35 @@ select.req{border:1px solid #fca5a5;border-radius:8px;padding:2px 6px;font-size:
         <button class="btn ghost" id="aiClear">清除（改用本地识别）</button>
       </div>
       <div class="hint">密钥只保存在这台设备的浏览器里，不会上传到任何地方。不填也能用，走本地识别（免费，准确率较低）。</div>
+    </div>
+    <div class="row" style="margin-top:10px"><button class="btn ghost" id="toggleSync">多设备同步（手机 / iPad 看同一份）</button></div>
+    <div id="syncBox" class="hidden" style="margin-top:10px">
+      <select id="syncMode" class="ai-inp">
+        <option value="supabase">Supabase 云数据库（推荐·稳定）</option>
+        <option value="kv">同步码 · 简易云 KV（免注册，自建 Worker 更稳）</option>
+      </select>
+      <div class="airow">
+        <input type="text" id="syncRoom" class="ai-inp" placeholder="同步码（两台设备填一样，如 homework-8888）">
+        <button class="btn ghost" id="syncGen">生成</button>
+      </div>
+      <div id="supaWrap">
+        <input type="text" id="sbUrl" class="ai-inp" placeholder="Project URL，如 https://abcdefg.supabase.co">
+        <div class="airow">
+          <input type="password" id="sbKey" class="ai-inp" placeholder="anon public key（eyJhbGciOi... 很长一串）">
+          <button class="btn ghost" id="sbPaste">粘贴</button>
+        </div>
+      </div>
+      <div id="kvWrap" class="hidden">
+        <input type="text" id="kvBase" class="ai-inp" placeholder="KV 接口地址（自建 Worker 地址，或 https://jsonblob.com/api/jsonBlob）">
+      </div>
+      <div class="hint" id="syncTip"></div>
+      <div class="hint" id="syncState"></div>
+      <div class="row" style="margin-top:6px">
+        <button class="btn ok" id="syncSave">开启同步</button>
+        <button class="btn ghost" id="syncNow">立即同步</button>
+        <button class="btn ghost" id="syncOff">关闭</button>
+      </div>
+      <div class="hint">同步内容：任务文字、科目、必做/选做、开始/完成/用时、提醒、小朋友名字。<b>作业原图不同步</b>，只留在拍照的那台设备上。两台设备填相同的同步码即可，谁最后改动谁生效。</div>
     </div>
     <input type="file" id="fileInput" accept="image/*" capture="environment" class="hidden">
     <input type="file" id="albumInput" accept="image/*" class="hidden">
@@ -292,12 +322,14 @@ select.req{border:1px solid #fca5a5;border-radius:8px;padding:2px 6px;font-size:
 
 <div id="toast"></div>
 <div id="modal" class="modal hidden"><div class="box" id="modalBox"></div></div>
+<div style="text-align:center;color:#9ca3af;font-size:12px;padding:14px 0 24px">作业小管家 <span id="verTxt"></span></div>
 
 <script>
 /* ====================== 基础工具 ====================== */
 const $ = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 const KEY = 'homework-helper-v1';
+const APP_VER = 'v4 · 2026-10-20（秒级计时 + 单项进行 + 暂停不清零 + 多设备同步）';
 
 function pad(n){return n<10?'0'+n:''+n}
 function dayKey(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
@@ -312,16 +344,31 @@ function fmtDur(ms, withSec){
   if(m < 60) return m+' 分钟';
   return Math.floor(m/60)+' 小时 '+ (m%60) + ' 分';
 }
-/* 任务真实耗时：有开始时间用 开始→完成，否则退回 加入→完成 */
+/* 精确到秒：3 分 25 秒 / 1 小时 5 分 30 秒 */
+function fmtDurS(ms){
+  if(ms==null) return '';
+  const s = Math.max(0, Math.round(ms/1000));
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), ss = s%60;
+  if(h) return h+' 小时 '+m+' 分 '+ss+' 秒';
+  if(m) return m+' 分 '+ss+' 秒';
+  return ss+' 秒';
+}
+/* 任务累计耗时（毫秒）：累加每次「开始→暂停/完成」的区间，暂停不清零 */
+function accumOf(t){ return Number(t.accumMs) || 0; }
+/* 已完成任务的最终用时 */
 function taskDur(t){
-  if(t.startAt && t.doneAt) return t.doneAt - t.startAt;
-  if(t.doneAt) return t.doneAt - t.createdAt;
-  return null;
+  if(!t.doneAt) return null;
+  return accumOf(t) + (t.startAt ? (t.doneAt - t.startAt) : 0);
+}
+/* 未完成任务当前已累计的时间（进行中实时增长，暂停时保持不动） */
+function elapsedMs(t){
+  if(t.doneAt) return taskDur(t) || 0;
+  return accumOf(t) + (t.startAt ? (Date.now() - t.startAt) : 0);
 }
 /* 学习总时长 = 当天最早一个「开始」→ 最晚一个「完成」（包含中间的休息）
    还有任务在进行中时，结束点按当前时间实时计算 */
 function spanMs(list){
-  const started = list.filter(t=>t.startAt).map(t=>t.startAt);
+  const started = list.filter(t=>(t.firstAt||t.startAt)).map(t=>t.firstAt||t.startAt);
   if(!started.length) return 0;
   const finished = list.filter(t=>t.doneAt).map(t=>t.doneAt);
   const from = Math.min.apply(null, started);
@@ -331,6 +378,7 @@ function spanMs(list){
 function taskState(t){
   if(t.doneAt) return 'done';
   if(t.startAt) return 'running';
+  if(accumOf(t) > 0) return 'paused';   /* 暂停过：已计时保留，点「继续」接着走 */
   return 'idle';
 }
 const CATS = ['语文','数学','英语','探究','其他'];
@@ -355,8 +403,18 @@ function load(){
   return {childName:'',days:{}};
 }
 function save(){
+  let touched = false;
+  /* 开启同步时：找出本次真正变动的日期，打上 updatedAt 供多端比较 */
+  if(state.sync && state.sync.on){
+    const now = Date.now();
+    Object.keys(state.days||{}).forEach(k=>{
+      const d = state.days[k], sig = sigOf(d);
+      if(sigMap.get(k) !== sig){ sigMap.set(k, sig); d.updatedAt = now; touched = true; }
+    });
+  }
   try{ localStorage.setItem(KEY, JSON.stringify(state)); }
-  catch(e){ toast('本地存储写入失败：'+e.message); }
+  catch(e){ toast('本地存储写入失败：'+e.message); return; }
+  if(touched && !inSync) scheduleSync();
 }
 function day(k){
   if(!state.days[k]) state.days[k]={tasks:[],images:[],notes:[]};
@@ -375,8 +433,16 @@ let curDay = todayKey();
       if(t.due === undefined) t.due = '';
       if(t.startAt === undefined) t.startAt = null;
       if(t.doneAt === undefined) t.doneAt = null;
+      if(t.accumMs === undefined) t.accumMs = 0;   /* 旧数据：此前「暂停=清零」，无可累计时长 */
       if(t.done && !t.doneAt) t.doneAt = t.createdAt;
     });
+    /* 旧数据没有改动时间戳：用该天最晚的任务时间兜底，避免同步时被空数据覆盖 */
+    const d = state.days[k];
+    if(d.updatedAt === undefined){
+      let mx = 0;
+      (d.tasks||[]).forEach(t=>{ mx = Math.max(mx, t.createdAt||0, t.firstAt||0, t.startAt||0, t.doneAt||0); });
+      d.updatedAt = mx || 0;
+    }
   });
 })();
 
@@ -635,13 +701,15 @@ function parseStructured(text){
 /* ====================== 渲染 ====================== */
 function taskHTML(t){
   const st = taskState(t), dur = taskDur(t), cat = t.cat || '其他', req = t.req || '必做';
+  const el = (st==='running' || st==='paused') ? elapsedMs(t) : 0;
   const ops = st==='idle' ? '<button class="btn ok" data-act="start">开始</button>'
-    : st==='running' ? '<button class="btn" data-act="finish">完成</button><button class="btn-sm" data-act="stop">停止</button>'
+    : st==='running' ? '<button class="btn" data-act="finish">完成</button><button class="btn-sm" data-act="pause">暂停</button>'
+    : st==='paused' ? '<button class="btn" data-act="resume">继续</button><button class="btn" data-act="finish">完成</button>'
     : '<button class="btn-sm" data-act="redo">撤销</button>';
-  const statePill = {idle:'待开始', running:'进行中', done:'已完成'}[st];
+  const statePill = {idle:'待开始', running:'进行中', paused:'已暂停', done:'已完成'}[st];
   return '<div class="task'+(st==='done'?' done':'')+'" data-id="'+t.id+'">'
     + '<div class="tick'+(st==='running'?' run':'')+'">'
-    +   (st==='done' ? '&#10003;' : (st==='running' ? '&#9654;' : '')) + '</div>'
+    +   (st==='done' ? '&#10003;' : (st==='running' ? '&#9654;' : (st==='paused' ? '&#10073;&#10073;' : ''))) + '</div>'
     + '<div class="tbody">'
     +   '<div class="ttext" data-act="edit" title="点击可修改">'+esc(t.text)+'</div>'
     +   '<div class="tmeta">'
@@ -651,11 +719,13 @@ function taskHTML(t){
     +       ['必做','选做'].map(r=>'<option'+(r===req?' selected':'')+'>'+r+'</option>').join('')+'</select>'
     +     (t.due? '<span class="pill due">截止 '+esc(t.due)+'</span>':'')
     +     '<span class="pill'+(st==='done'?' ok':(st==='running'?' run':''))+'">'+statePill+'</span>'
-    +     (t.startAt? '<span class="pill time">开始 '+fmtHM(t.startAt)+'</span>':'')
-    +     (t.doneAt? '<span class="pill time">完成 '+fmtHM(t.doneAt)+'</span>':'')
+    +     ((t.firstAt||t.startAt)? '<span class="pill time">开始 '+fmtTime(t.firstAt||t.startAt)+'</span>':'')
+    +     (t.doneAt? '<span class="pill time">完成 '+fmtTime(t.doneAt)+'</span>':'')
     +     (st==='running'
-          ? '<span class="timer" data-timer="'+t.id+'">已进行 '+fmtDur(Date.now()-t.startAt, true)+'</span>'
-          : (dur!=null? '<span class="pill">用时 '+fmtDur(dur)+'</span>':''))
+          ? '<span class="timer" data-timer="'+t.id+'">已进行 '+fmtDurS(el)+'</span>'
+          : st==='paused'
+          ? '<span class="pill time" data-timer="'+t.id+'">已暂停 · 已计时 '+fmtDurS(el)+'</span>'
+          : (dur!=null? '<span class="pill">用时 '+fmtDurS(dur)+'</span>':''))
     +     '<span class="pill">'+(t.source==='ocr'?'来自扫描':'手动添加')+'</span>'
     +   '</div>'
     + '</div>'
@@ -674,14 +744,14 @@ function render(){
   const total = d.tasks.length, done = d.tasks.filter(t=>taskState(t)==='done').length;
   const sumMs = spanMs(d.tasks);
   $('#sDone').textContent = done+'/'+total;
-  $('#sTime').textContent = sumMs? fmtDur(sumMs) : '0分';
+  $('#sTime').textContent = sumMs? fmtDurS(sumMs) : '0 秒';
   $('#sStar').textContent = done;
   $('#sStreak').textContent = streak();
   $('#mainBar').style.width = (total? Math.round(done/total*100):0)+'%';
 
   const banner = $('#banner');
   if(total>0 && done===total){
-    banner.textContent = '全部完成！共 '+total+' 项，学习总时长 '+fmtDur(sumMs)+'，太棒了！';
+    banner.textContent = '全部完成！共 '+total+' 项，学习总时长 '+fmtDurS(sumMs)+'，太棒了！';
     banner.classList.add('show');
   }else banner.classList.remove('show');
 
@@ -712,7 +782,7 @@ function render(){
         + '<span>必做 '+md+'/'+must.length+'</span>'
         + (opt.length? '<span>选做 '+opt.filter(t=>taskState(t)==='done').length+'/'+opt.length+'</span>':'')
         + '<span class="gline"></span>'
-        + '<span>'+fmtDur(spanMs(list))+'</span></h3>'
+        + '<span>'+fmtDurS(spanMs(list))+'</span></h3>'
         + list.map(taskHTML).join('') + '</div>';
     }).join('');
   }
@@ -742,7 +812,7 @@ function addTasks(items, source, imgId){
     const text = String(it.text||'').trim(); if(!text) return;
     d.tasks.push({
       id:uid(), text, done:false, createdAt:Date.now(),
-      startAt:null, doneAt:null,
+      startAt:null, doneAt:null, accumMs:0, firstAt:null,
       cat: it.cat || guessCategory(text),
       req: it.req || '必做',
       due: it.due || extractDue(text),
@@ -761,6 +831,33 @@ function addNotes(list){
   if(n) toast('已加入 '+n+' 条提醒');
 }
 
+/* 同一时间只允许一项任务在进行：把其它进行中的自动暂停（已计时保留） */
+function pauseOthers(exceptId){
+  const paused = [], now = Date.now();
+  Object.keys(state.days||{}).forEach(k=>{
+    (state.days[k].tasks||[]).forEach(t=>{
+      if(t.id !== exceptId && t.startAt && !t.doneAt){
+        t.accumMs = accumOf(t) + (now - t.startAt);
+        t.startAt = null; paused.push(t);
+      }
+    });
+  });
+  return paused;
+}
+/* 启动时清理跨天遗留的「进行中」（比如昨天点了开始却没点完成） */
+function settleStale(){
+  const tk = todayKey();
+  let n = 0;
+  Object.keys(state.days||{}).forEach(k=>{
+    if(k === tk) return;
+    (state.days[k].tasks||[]).forEach(t=>{
+      if(t.startAt && !t.doneAt){ t.startAt = null; n++; }
+    });
+  });
+  if(n) persist();
+  return n;
+}
+
 $('#taskList').addEventListener('click', e=>{
   const el = e.target.closest('[data-act]'); if(!el) return;
   const row = e.target.closest('.task'); if(!row) return;
@@ -770,29 +867,44 @@ $('#taskList').addEventListener('click', e=>{
   const t = d.tasks.find(x=>x.id===id); if(!t) return;
 
   if(act==='start'){
+    const others = pauseOthers(t.id);          // 同一时间只允许一项在进行
+    t.accumMs = 0; t.startAt = Date.now(); t.doneAt = null; t.done = false;
+    if(!t.firstAt) t.firstAt = t.startAt;
+    save(); render();
+    playTone([660,880], .12);
+    toast((others.length? '已自动暂停「'+others[0].text+'」。' : '') + '开始做「'+t.text+'」，计时中…');
+  }
+  else if(act==='pause'){
+    if(!t.startAt) return;
+    t.accumMs = accumOf(t) + (Date.now() - t.startAt);
+    t.startAt = null; save(); render();
+    toast('「'+t.text+'」已暂停，已计时 '+fmtDurS(accumOf(t))+'，点「继续」接着算');
+  }
+  else if(act==='resume'){
+    if(t.startAt) return;
+    const others = pauseOthers(t.id);          // 同一时间只允许一项在进行
     t.startAt = Date.now(); save(); render();
     playTone([660,880], .12);
-    toast('开始做「'+t.text+'」，计时中…');
+    toast((others.length? '已自动暂停「'+others[0].text+'」。' : '')
+      + '「'+t.text+'」继续计时（已累计 '+fmtDurS(accumOf(t))+'）');
   }
   else if(act==='finish'){
-    if(!t.startAt){ toast('请先点「开始」，完成时才会计时'); return; }
+    if(!t.startAt && accumOf(t)===0){ toast('请先点「开始」，完成时才会计时'); return; }
     t.doneAt = Date.now(); t.done=true; save();
-    const used = fmtDur(t.doneAt - t.startAt);
+    const used = fmtDurS(taskDur(t));
     celebrate(el); render();
     toast('「'+t.text+'」完成！用时 '+used);
     if(d.tasks.every(x=>taskState(x)==='done')) bigWin(d);
   }
-  else if(act==='stop'){
-    if(!confirm('停止计时？已进行的 '+fmtDur(Date.now()-t.startAt)+' 不会被记录。')) return;
-    t.startAt=null; save(); render();
-  }
   else if(act==='redo'){
-    if(!confirm('撤销「'+t.text+'」的完成状态？开始/完成时间都会清除。')) return;
-    t.done=false; t.doneAt=null; t.startAt=null; save(); render();
+    if(!confirm('撤销「'+t.text+'」的完成状态？计时会重新开始。')) return;
+    t.done=false; t.doneAt=null; t.startAt=null; t.accumMs=0; t.firstAt=null; save(); render();
   }
   else if(act==='toggle'){
     // 圆圈不再可勾选：未完成的任务需先点「开始」
-    if(taskState(t)!=='running') toast('先点「开始」，做完再点「完成」，这样才会记录用时');
+    const s = taskState(t);
+    if(s==='paused') toast('这项已暂停，点「继续」接着计时');
+    else if(s!=='running') toast('先点「开始」，做完再点「完成」，这样才会记录用时');
   }
   else if(act==='edit'){
     const span = el;
@@ -837,12 +949,12 @@ setInterval(()=>{
     if(t.startAt && !t.doneAt){
       running = true;
       const el = document.querySelector('[data-timer="'+t.id+'"]');
-      if(el) el.textContent = '已进行 ' + fmtDur(Date.now() - t.startAt, true);
+      if(el) el.textContent = '已进行 ' + fmtDurS(elapsedMs(t));
     }
   });
   if(running && !document.hidden){
     const el = document.getElementById('sTime');
-    if(el) el.textContent = fmtDur(spanMs(d.tasks));
+    if(el) el.textContent = fmtDurS(spanMs(d.tasks));
   }
 }, 1000);
 
@@ -864,7 +976,7 @@ function bigWin(d){
   playTone([659,784,988,1319], .14);
   setTimeout(()=>confetti(innerWidth/2, innerHeight*0.45, 120), 350);
   if(navigator.vibrate) navigator.vibrate([60,60,60]);
-  const span = fmtDur(spanMs(d.tasks));
+  const span = fmtDurS(spanMs(d.tasks));
   toast('全部完成！共 '+d.tasks.length+' 项，学习总时长 '+span+'，今天非常棒！');
 }
 
@@ -1191,6 +1303,50 @@ $('#aiClear').addEventListener('click', ()=>{
   state.aiCfg = null; save(); $('#aiKey').value=''; updateAiBadge();
   toast('已清除，将使用本地识别');
 });
+$('#toggleSync').addEventListener('click', ()=>{
+  const b = $('#syncBox'); b.classList.toggle('hidden');
+  if(!b.classList.contains('hidden')) updateSyncUI();
+});
+$('#syncMode').addEventListener('change', updateSyncTip);
+$('#syncGen').addEventListener('click', async ()=>{
+  if($('#syncMode').value === 'kv'){
+    const base = ($('#kvBase').value.trim() || KV_DEFAULT).replace(/\/+$/,'');
+    try{
+      const r = await fetch(base, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{"v":1,"days":{}}'});
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      let id=''; try{ const j = await r.json(); id = j.id||j.blobId||j.key||''; }catch(e){}
+      if(!id){ id = (r.headers.get('Location')||'').split('/').pop()||''; }
+      if(!id){ toast('服务没返回同步码，请换接口地址'); return; }
+      $('#syncRoom').value = id;
+      toast('同步码：' + id + '（另一台设备填一样的）');
+    }catch(e){ toast('生成失败：' + e.message + '（jsonblob 需联网；也可用自建 Worker）'); }
+    return;
+  }
+  $('#syncRoom').value = 'homework-' + Math.random().toString(36).slice(2,7);
+  toast('同步码已填好，另一台设备填一模一样的');
+});
+$('#sbPaste').addEventListener('click', async ()=>{
+  try{ $('#sbKey').value = (await navigator.clipboard.readText()).trim(); }
+  catch(e){ toast('无法读取剪贴板，请长按输入框选「粘贴」'); }
+});
+$('#syncSave').addEventListener('click', ()=>{
+  const mode = $('#syncMode').value;
+  const room = $('#syncRoom').value.trim();
+  const url = $('#sbUrl').value.trim().replace(/\/+$/,'');
+  const key = $('#sbKey').value.trim();
+  const kvBase = ($('#kvBase').value.trim() || KV_DEFAULT).replace(/\/+$/,'');
+  if(!room){ toast('同步码必填：两台设备填一样的'); return; }
+  if(mode === 'supabase' && (!url || !key)){ toast('Supabase 模式要填 Project URL 和 anon key'); return; }
+  const old = state.sync || {};
+  state.sync = {on:true, mode, room, url, key, kvBase, kvId: mode==='kv' ? room : (old.kvId||'')};
+  primeSig(); persist(); updateSyncUI(); syncNow(true);
+});
+$('#syncNow').addEventListener('click', ()=>syncNow(true));
+$('#syncOff').addEventListener('click', ()=>{
+  if(!state.sync) return;
+  state.sync.on = false; persist(); updateSyncUI();
+  toast('已关闭同步，数据只存在这台设备');
+});
 $('#toggleManual').addEventListener('click', ()=>{
   const b=$('#manualBox'); b.classList.toggle('hidden');
   if(!b.classList.contains('hidden')) $('#manualText').focus();
@@ -1330,7 +1486,7 @@ function shiftDay(n){
   curDay = dayKey(d); render();
 }
 $('#datePick').addEventListener('change', e=>{ if(e.target.value){ curDay=e.target.value; render(); } });
-$('#kidName').addEventListener('input', e=>{ state.childName=e.target.value; save(); });
+$('#kidName').addEventListener('input', e=>{ state.childName=e.target.value; save(); scheduleSync(); });
 
 /* 手动添加一项（妈妈牌作业） */
 $('#newTaskCat').innerHTML = '<option value="">科目自动</option>'
@@ -1378,18 +1534,19 @@ $('#openHistory').addEventListener('click', ()=>{
                 const st = taskState(t), dur = taskDur(t);
                 return '<li>'+(st==='done'?'<span style="color:#16a34a">已完成</span>'
                         :st==='running'?'<span style="color:#b45309">进行中</span>'
+                        :st==='paused'?'<span style="color:#b45309">已暂停</span>'
                         :'<span style="color:#9ca3af">未开始</span>')
                   +' <span style="color:#b91c1c">['+esc(t.req||'必做')+']</span>'
                   +' · '+esc(t.text)
-                  +(t.startAt?' · 开始 '+fmtHM(t.startAt):'')
-                  +(t.doneAt?' · 完成 '+fmtHM(t.doneAt):'')
-                  +(dur!=null?' · 用时 '+fmtDur(dur):'')
+                  +((t.firstAt||t.startAt)?' · 开始 '+fmtTime(t.firstAt||t.startAt):'')
+                  +(t.doneAt?' · 完成 '+fmtTime(t.doneAt):'')
+                  +(dur!=null?' · 用时 '+fmtDurS(dur):'')
                   +'</li>';
               }).join('')+'</ul></div>';
         }).join('');
         return '<div class="hday"><div class="h" onclick="this.parentNode.classList.toggle(\'open\')">'
           + '<span class="n">'+k+(k===todayKey()?'（今天）':'')+'</span>'
-          + '<span>'+done+'/'+d.tasks.length+(sumMs?' · 总时长 '+fmtDur(sumMs):'')+'</span></div>'
+          + '<span>'+done+'/'+d.tasks.length+(sumMs?' · 总时长 '+fmtDurS(sumMs):'')+'</span></div>'
           + '<div class="d">'+body+noteHtml+'</div></div>';
       }).join('');
   openModal(html);
@@ -1401,20 +1558,20 @@ window.exportAll = ()=> exportCSV(Object.keys(state.days).filter(k=>state.days[k
 
 /* ====================== 导出 CSV ====================== */
 function exportCSV(dayKeys){
-  const rows = [['日期','小朋友','科目','必做/选做','任务','状态','开始时间','完成时间','单项用时(分钟)','当日学习总时长(分钟)','截止','加入时间','来源']];
-  const ST = {idle:'待开始', running:'进行中', done:'已完成'};
+  const rows = [['日期','小朋友','科目','必做/选做','任务','状态','开始时间','完成时间','单项用时(秒)','单项用时','当日学习总时长(秒)','截止','加入时间','来源']];
+  const ST = {idle:'待开始', running:'进行中', paused:'已暂停', done:'已完成'};
   dayKeys.forEach(k=>{
     const daySpan = spanMs(state.days[k].tasks);
-    const daySpanMin = daySpan? Math.round(daySpan/60000) : '';
+    const daySpanSec = daySpan? Math.round(daySpan/1000) : '';
     (state.days[k].notes||[]).forEach(n=>{
-      rows.push([k, state.childName||'', '', '', n.text, '提醒', '', '', '', daySpanMin, '', fmtTime(n.ts), '扫描']);
+      rows.push([k, state.childName||'', '', '', n.text, '提醒', '', '', '', '', daySpanSec, '', fmtTime(n.ts), '扫描']);
     });
     state.days[k].tasks.forEach(t=>{
       const dur = taskDur(t);
       rows.push([k, state.childName||'', t.cat||'其他', t.req||'必做', t.text, ST[taskState(t)],
-        t.startAt? fmtTime(t.startAt):'', t.doneAt? fmtTime(t.doneAt):'',
-        dur!=null? Math.max(0,Math.round(dur/60000)):'',
-        daySpanMin, t.due||'', fmtTime(t.createdAt), t.source==='ocr'?'扫描':'手动']);
+        (t.firstAt||t.startAt)? fmtTime(t.firstAt||t.startAt):'', t.doneAt? fmtTime(t.doneAt):'',
+        dur!=null? Math.max(0,Math.round(dur/1000)):'',
+        dur!=null? fmtDurS(dur):'', daySpanSec, t.due||'', fmtTime(t.createdAt), t.source==='ocr'?'扫描':'手动']);
     });
   });
   const csv = rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\r\n');
@@ -1425,6 +1582,172 @@ function exportCSV(dayKeys){
   document.body.appendChild(a); a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},1000);
   toast('已导出 '+dayKeys.length+' 天的记录');
+}
+
+/* ====================== 多设备同步 ======================
+   只同步：任务文字 / 科目 / 必做选做 / 开始·完成·用时 / 提醒 / 小朋友名字
+   不同步：作业原图（留在拍照的那台设备）、AI Key、OCR 开关
+   合并规则：按「天」比较 updatedAt，新的一方胜出，互不覆盖对方的其它日期 */
+const SYNC_TABLE = 'homework_sync';
+const KV_DEFAULT = 'https://jsonblob.com/api/jsonBlob';
+let syncBusy=false, pushTimer=null, lastSyncAt=0, inSync=false;
+const sigMap = new Map();
+function sigOf(d){ return JSON.stringify([d.tasks||[], d.notes||[]]); }
+function primeSig(){ Object.keys(state.days||{}).forEach(k=>sigMap.set(k, sigOf(state.days[k]))); }
+function persist(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
+
+function syncPayload(){
+  const days={};
+  Object.keys(state.days||{}).forEach(k=>{
+    const d = state.days[k];
+    if(!(d.tasks&&d.tasks.length) && !(d.notes&&d.notes.length)) return;
+    days[k] = {tasks:d.tasks||[], notes:d.notes||[], updatedAt:d.updatedAt||0};
+  });
+  return {v:1, childName:state.childName||'', days};
+}
+function applyRemote(rem){
+  if(!rem || !rem.days) return 0;
+  let n = 0;
+  if(!state.childName && rem.childName) state.childName = rem.childName;
+  Object.keys(rem.days).forEach(k=>{
+    const r = rem.days[k], l = state.days[k], rt = r.updatedAt||0;
+    if(!l){ state.days[k] = {tasks:r.tasks||[], notes:r.notes||[], images:[], updatedAt:rt}; n++; return; }
+    if(rt > (l.updatedAt||0)){ l.tasks=r.tasks||[]; l.notes=r.notes||[]; l.updatedAt=rt; n++; }
+  });
+  return n;
+}
+function needPush(remote){
+  if(!remote || !remote.days) return true;
+  const rd = remote.days;
+  let need = false;
+  Object.keys(state.days||{}).forEach(k=>{
+    const d = state.days[k];
+    if(!(d.tasks&&d.tasks.length) && !(d.notes&&d.notes.length)) return;
+    const r = rd[k];
+    if(!r || (d.updatedAt||0) > (r.updatedAt||0)) need = true;
+  });
+  return need;
+}
+function normalizeDays(){
+  Object.keys(state.days||{}).forEach(k=>{
+    const d = state.days[k];
+    if(!d.notes) d.notes=[]; if(!d.images) d.images=[];
+    (d.tasks||[]).forEach(t=>{
+      if(!t.cat) t.cat = guessCategory(t.text);
+      if(!t.req) t.req = '必做';
+      if(t.accumMs === undefined) t.accumMs = 0;
+    });
+  });
+}
+/* ---------- Supabase（REST 直连，anon key） ---------- */
+async function sbGet(c){
+  const u = c.url.replace(/\/+$/,'') + '/rest/v1/' + SYNC_TABLE + '?room=eq.' + encodeURIComponent(c.room) + '&select=data';
+  const r = await fetch(u, {headers:{'apikey':c.key, 'Authorization':'Bearer '+c.key, 'Accept':'application/json'}});
+  if(!r.ok) throw new Error('Supabase 读取失败 ' + r.status + '：' + (await r.text()).slice(0,180));
+  const j = await r.json();
+  return (j && j.length) ? j[0].data : null;
+}
+async function sbSet(c, data){
+  const u = c.url.replace(/\/+$/,'') + '/rest/v1/' + SYNC_TABLE;
+  const r = await fetch(u, {method:'POST', headers:{
+    'apikey':c.key, 'Authorization':'Bearer '+c.key, 'Content-Type':'application/json',
+    'Prefer':'resolution=merge-duplicates,return=minimal'
+  }, body: JSON.stringify([{room:c.room, data:data}])});
+  if(!r.ok) throw new Error('Supabase 写入失败 ' + r.status + '：' + (await r.text()).slice(0,180));
+}
+/* ---------- 简易云 KV：jsonblob 或自建 Cloudflare Worker ---------- */
+async function kvGet(c){
+  if(!c.kvId) return null;
+  const r = await fetch(c.kvBase.replace(/\/+$/,'') + '/' + encodeURIComponent(c.kvId), {headers:{'Accept':'application/json'}});
+  if(r.status === 404) return null;
+  if(!r.ok) throw new Error('KV 读取失败 ' + r.status);
+  try{ return await r.json(); }catch(e){ return null; }
+}
+async function kvSet(c, data){
+  const base = c.kvBase.replace(/\/+$/,'');
+  let r = c.kvId
+    ? await fetch(base + '/' + encodeURIComponent(c.kvId), {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)})
+    : await fetch(base, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
+  if(r.status === 404 && c.kvId){          // 码不存在（自建服务任意码可用则不会走到这）
+    r = await fetch(base, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
+  }
+  if(!r.ok) throw new Error('KV 写入失败 ' + r.status);
+  let id = '';
+  try{ const j = await r.json(); id = j.id || j.blobId || j.key || ''; }catch(e){}
+  if(!id){ const loc = r.headers.get('Location') || ''; id = loc.split('/').pop() || ''; }
+  if(id && id !== c.kvId){
+    c.kvId = id; state.sync.kvId = id;
+    const el = $('#syncRoom'); if(el) el.value = id;
+    toast('云端已生成同步码：' + id + '，另一台设备请填这个');
+  }
+}
+function remoteGet(c){ return c.mode === 'supabase' ? sbGet(c) : kvGet(c); }
+function remoteSet(c, d){ return c.mode === 'supabase' ? sbSet(c) : kvSet(c, d); }
+
+async function syncNow(manual){
+  const c = state.sync;
+  if(!c || !c.on){ if(manual) toast('先填好配置并点「开启同步」'); return; }
+  if(syncBusy) return;
+  syncBusy = true; inSync = true;
+  setSyncChip('同步中…');
+  try{
+    const remote = await remoteGet(c);
+    const pulled = applyRemote(remote);
+    const pushed = needPush(remote);
+    if(pushed) await remoteSet(c, syncPayload());
+    lastSyncAt = Date.now();
+    if(pulled){ normalizeDays(); primeSig(); render(); }
+    persist();
+    setSyncChip('已同步 ' + fmtHM(lastSyncAt));
+    setSyncState('上次同步 ' + fmtTime(lastSyncAt)
+      + ' · ' + (pushed ? '已上传本机改动' : '本机无改动')
+      + (pulled ? ' · 已拉取 ' + pulled + ' 天' : ''), false);
+    if(manual) toast(pulled ? ('同步完成，收到 ' + pulled + ' 天的更新') : '同步完成');
+  }catch(e){
+    const m = e && e.message ? e.message : String(e);
+    const hint = /Failed to fetch|NetworkError|Load failed|TypeError/i.test(m)
+      ? '（连不上云端：检查地址/Key 是否正确，或网络是否可达）' : '';
+    setSyncChip('同步失败');
+    setSyncState('同步失败：' + m + hint, true);
+    if(manual) toast('同步失败：' + m);
+  }finally{ syncBusy = false; inSync = false; }
+}
+function scheduleSync(){
+  if(!state.sync || !state.sync.on) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(()=>syncNow(false), 2500);
+}
+function setSyncChip(t){
+  const el = $('#syncChip'); if(!el) return;
+  el.classList.remove('hidden'); el.textContent = t;
+}
+function setSyncState(t, err){
+  const el = $('#syncState'); if(!el) return;
+  el.textContent = t; el.style.color = err ? '#b91c1c' : '';
+}
+function updateSyncTip(){
+  const kv = $('#syncMode').value === 'kv';
+  $('#supaWrap').classList.toggle('hidden', kv);
+  $('#kvWrap').classList.toggle('hidden', !kv);
+  $('#syncTip').innerHTML = kv
+    ? '填一个接口地址即可，推荐用我给的 Cloudflare Worker（免费、任意同步码可用）；用 jsonblob 时同步码由服务端生成，在第一台设备点「生成」拿到后填到第二台。'
+    : 'Supabase 免费项目即可。建表 SQL：create table homework_sync(room text primary key, data jsonb, updated_at timestamptz default now()); 再开 RLS 允许 anon 读写。';
+}
+function updateSyncUI(){
+  const c = state.sync || {};
+  $('#syncMode').value = c.mode || 'supabase';
+  $('#syncRoom').value = c.room || '';
+  $('#sbUrl').value = c.url || '';
+  $('#sbKey').value = c.key || '';
+  $('#kvBase').value = c.kvBase || '';
+  updateSyncTip();
+  if(c.on){
+    setSyncChip(lastSyncAt ? ('已同步 ' + fmtHM(lastSyncAt)) : '同步已开启');
+    setSyncState('同步已开启（' + (c.mode==='supabase' ? 'Supabase' : '云 KV') + ' · 码 ' + (c.room||'-') + '）。改完作业约 2 秒后自动上传，每 30 秒自动检查一次。', false);
+  }else{
+    $('#syncChip').classList.add('hidden');
+    setSyncState('尚未开启同步：数据只存在这台设备上。', false);
+  }
 }
 
 /* ====================== 启动 ====================== */
@@ -1452,8 +1775,16 @@ function exportCSV(dayKeys){
 if('serviceWorker' in navigator && location.protocol !== 'file:'){
   addEventListener('load', ()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); });
 }
+settleStale();
 render();
 updateAiBadge();
+$('#verTxt').textContent = APP_VER;
+if(state.sync && state.sync.on){ updateSyncUI(); primeSig(); syncNow(false);
+  setInterval(()=>{ if(!document.hidden && state.sync && state.sync.on) syncNow(false); }, 30000);
+  document.addEventListener('visibilitychange', ()=>{
+    if(!document.hidden && state.sync && state.sync.on) syncNow(false);
+  });
+}
 if(location.protocol === 'file:'){
   $('#ocrStatus').innerHTML = '注意：当前是双击本地文件打开的（地址以 file:// 开头），浏览器禁止加载识别引擎，扫描会卡住。<br>'
     + '请双击「启动（手机也能用）.bat」，用 http://localhost:8000/index.html 打开；手机用同一个 WiFi 下的 IP 地址打开。<br>'

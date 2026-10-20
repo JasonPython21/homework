@@ -2,7 +2,7 @@
    - 网页本体（HTML/图标）缓存到本地，断网也能打开
    - 中英文识别库由 tesseract.js 自己缓存，首次需联网下载
    注意：service worker 只在 https 或 localhost 下生效，局域网 http 会自动跳过（不影响使用） */
-const CACHE = 'homework-helper-v1';
+const CACHE = 'homework-helper-v3';
 const ASSETS = [
   './',
   './index.html',
